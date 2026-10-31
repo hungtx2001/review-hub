@@ -346,7 +346,7 @@
       <section class="hero">
         <div class="badge">
           <span class="badge-dot"></span>
-          v0.3.0 Latest Release
+          <span id="release-badge-text">Latest Release</span>
         </div>
         <h1>Human Review for AI Code Changes</h1>
         <p>Always inspect what AI coding agents (Claude Code, Cursor, Cline, Roo Code) propose in your project, and accept or reject individual hunks before anything touches disk.</p>
@@ -365,8 +365,8 @@
               </div>
               <p class="card-desc">Staged in-editor inline diff, CodeLens buttons, real-time file watcher, and dedicated Review Tab.</p>
             </div>
-            <a href="https://github.com/hungtx2001/review-hub/releases/latest/download/review-hub-vscode-0.3.0.vsix" class="btn btn-primary">
-              Download .vsix (v0.3.0)
+            <a id="vscode-download-btn" href="https://github.com/hungtx2001/review-hub/releases/latest" class="btn btn-primary">
+              Download for VS Code
             </a>
           </div>
 
@@ -382,8 +382,8 @@
               </div>
               <p class="card-desc">In-editor range highlighting, inline Accept/Reject gutter bars, Review Hub ToolWindow, and zero config.</p>
             </div>
-            <a href="https://github.com/hungtx2001/review-hub/releases/latest/download/review-hub-jetbrains-0.3.0.zip" class="btn btn-primary">
-              Download .zip (v0.3.0)
+            <a id="jetbrains-download-btn" href="https://github.com/hungtx2001/review-hub/releases/latest" class="btn btn-primary">
+              Download for JetBrains
             </a>
           </div>
 
@@ -426,7 +426,7 @@
             <div class="step-number">Option A</div>
             <h4>VS Code Installation</h4>
             <ol>
-              <li>Download <code>review-hub-vscode-0.3.0.vsix</code> from above.</li>
+              <li>Download the extension using the <strong>Download for VS Code</strong> button above.</li>
               <li>Open VS Code and press <code>Ctrl+Shift+X</code> (Extensions view).</li>
               <li>Click the <code>...</code> (Views and More Actions) menu in the top-right corner.</li>
               <li>Select <strong>Install from VSIX...</strong> and choose the downloaded file.</li>
@@ -437,7 +437,7 @@
             <div class="step-number">Option B</div>
             <h4>JetBrains IDE Installation</h4>
             <ol>
-              <li>Download <code>review-hub-jetbrains-0.3.0.zip</code> from above.</li>
+              <li>Download the plugin using the <strong>Download for JetBrains</strong> button above.</li>
               <li>Open your IDE (IntelliJ, WebStorm, PyCharm, etc.).</li>
               <li>Open <strong>Settings / Preferences</strong> (<code>Ctrl+Alt+S</code> or <code>Cmd+,</code>).</li>
               <li>Go to <strong>Plugins</strong>, click the ⚙️ gear icon, and select <strong>Install Plugin from Disk...</strong>.</li>
@@ -475,6 +475,40 @@
         }, 2000);
       });
     }
+  
+    // Auto-fetch latest release assets from GitHub API
+    async function loadLatestRelease() {
+      try {
+        const res = await fetch('https://api.github.com/repos/hungtx2001/review-hub/releases/latest');
+        if (!res.ok) return;
+        const data = await res.json();
+        const tag = data.tag_name || 'Latest';
+
+        const badge = document.getElementById('release-badge-text');
+        if (badge) badge.textContent = tag + ' Latest Release';
+
+        if (Array.isArray(data.assets)) {
+          const vsix = data.assets.find(a => a.name.endsWith('.vsix'));
+          const vsCodeBtn = document.getElementById('vscode-download-btn');
+          if (vsix && vsCodeBtn) {
+            vsCodeBtn.href = vsix.browser_download_url;
+            // keep clean button text
+          }
+
+          const jetbrains = data.assets.find(a => a.name.endsWith('.zip') && a.name.includes('jetbrains'));
+          const jetBrainsBtn = document.getElementById('jetbrains-download-btn');
+          if (jetbrains && jetBrainsBtn) {
+            jetBrainsBtn.href = jetbrains.browser_download_url;
+            // keep clean button text
+          }
+        }
+      } catch (err) {
+        console.warn('GitHub API rate limited or offline, using fallback latest link.', err);
+      }
+    }
+    loadLatestRelease();
+
   </script>
 </body>
 </html>
+
