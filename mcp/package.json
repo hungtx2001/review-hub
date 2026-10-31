@@ -15,7 +15,7 @@
     "jetbrains",
     "vscode"
   ],
-  "homepage": "https://github.com/hungtx2001/review-hub#readme",
+  "homepage": "https://hungtx2001.github.io/review-hub/",
   "bugs": {
     "url": "https://github.com/hungtx2001/review-hub/issues"
   },
@@ -36,4 +36,3 @@
     "node": ">=18"
   }
 }
-
