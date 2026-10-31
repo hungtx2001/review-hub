@@ -1,6 +1,6 @@
 {
   "name": "review-hub-monorepo",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Review Hub Monorepo: Core engine, VS Code extension, MCP server, and JetBrains plugin",
   "license": "MIT",

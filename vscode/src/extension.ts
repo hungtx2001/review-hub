@@ -787,6 +787,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("review-hub.copyMcpConfig", () => copyMcpConfigSnippet()),
     vscode.commands.registerCommand("review-hub.copyAgentRules", () => copyAgentRulesSnippet()),
+    vscode.commands.registerCommand("review-hub.openWebsite", () => {
+      void vscode.env.openExternal(vscode.Uri.parse("https://hungtx2001.github.io/review-hub/"));
+    }),
     vscode.commands.registerCommand("review-hub.registerMcp", () => copyMcpConfigSnippet()),
     vscode.commands.registerCommand("review-hub.installInstructions", () => installInstructions()),
     vscode.commands.registerCommand("review-hub.showHubInfo", async () => {

@@ -31,7 +31,7 @@ const vscode = require("./vscode-stub") as {
 /** Module-level so later tests in this file can dispose exactly what activation created. */
 const ctx = {
   subscriptions: [] as { dispose(): void }[],
-  extension: { packageJSON: { version: "0.3.0" } },
+  extension: { packageJSON: { version: "0.3.1" } },
   extensionUri: vscode.Uri.file(process.cwd()),
   asAbsolutePath: (p: string) => path.join(process.cwd(), p),
   globalState: { get: () => undefined, update: async () => {} },

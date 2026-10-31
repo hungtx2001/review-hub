@@ -112,3 +112,12 @@ jobs:
             mcp/*.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish MCP Server to npm
+        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && env.NPM_TOKEN != ''
+        run: |
+          cd mcp
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          npm publish --access public || echo "npm publish skipped or already published"
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

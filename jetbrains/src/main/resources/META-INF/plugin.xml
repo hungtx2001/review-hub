@@ -90,6 +90,11 @@
                     description="Auto-register review-hub-mcp into Claude Code, Cline, Roo Code"
                     icon="AllIcons.General.GearPlain"/>
             <separator/>
+                        <action id="ReviewHub.OpenWebsite"
+                    class="com.reviewhub.actions.OpenWebsiteAction"
+                    text="Open Website &amp; Docs"
+                    description="Open Review Hub official website and documentation"
+                    icon="AllIcons.General.Web"/>
             <action id="ReviewHub.Refresh"
                     class="com.reviewhub.actions.RefreshAction"
                     text="Refresh Changes"
@@ -109,6 +114,7 @@
             <reference ref="ReviewHub.CopyAgentRules"/>
             <reference ref="ReviewHub.RegisterMcp"/>
             <separator/>
+            <reference ref="ReviewHub.OpenWebsite"/>
             <reference ref="ReviewHub.Refresh"/>
         </group>
     </actions>

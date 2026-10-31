@@ -2,7 +2,7 @@
   "name": "review-hub-vscode",
   "displayName": "Review Hub",
   "description": "Always see what AI coding agents changed in your project, and accept or reject individual hunks. Works with Claude Code, opencode, dsh, Cline, Roo via MCP, and catches direct writes too.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "review-hub",
   "license": "MIT",
   "preview": true,
@@ -115,6 +115,11 @@
         "command": "review-hub.copyAgentRules",
         "title": "Review Hub: Copy AI Agent Rules to Clipboard",
         "icon": "$(book)"
+      },
+      {
+        "command": "review-hub.openWebsite",
+        "title": "Review Hub: Open Documentation & Website",
+        "icon": "$(globe)"
       }
     ],
     "viewsContainers": {
@@ -166,6 +171,11 @@
           "command": "review-hub.copyAgentRules",
           "when": "view == review-hub.changes",
           "group": "navigation@6"
+        },
+        {
+          "command": "review-hub.openWebsite",
+          "when": "view == review-hub.changes",
+          "group": "navigation@7"
         }
       ],
       "explorer/context": [
@@ -245,7 +255,19 @@
           "description": "Hard cap on how many files a checkpoint snapshot will read. Keeps activation cheap on very large repositories."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "review-hub.stagedAcceptAll",
+        "key": "alt+shift+a",
+        "when": "resourceScheme == file && reviewHub.hasStagedReview"
+      },
+      {
+        "command": "review-hub.stagedRejectAll",
+        "key": "alt+shift+r",
+        "when": "resourceScheme == file && reviewHub.hasStagedReview"
+      }
+    ]
   },
   "dependencies": {
     "@review-hub/core": "*",

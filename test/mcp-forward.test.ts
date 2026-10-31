@@ -317,3 +317,52 @@ test("resources and prompts are registered and callable", async () => {
     await hub.stop();
   }
 });
+
+test("get_change_status returns accurate pending and resolved metrics", async () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-status-"));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-ws-status-"));
+  fs.writeFileSync(path.join(workspace, "status.txt"), "hello world\n");
+  const hub = new HubServer({ baseDir, token: "tok", excludeGlobs: [] });
+  const addr = await hub.start(0);
+
+  const conn = spawnMcp({ REVIEW_HUB_URL: addr.url, REVIEW_HUB_TOKEN: "tok", REVIEW_HUB_WORKSPACE: workspace });
+  try {
+    await init(conn);
+    const propRes = await conn.call("tools/call", {
+      name: "propose_edit",
+      arguments: { path: "status.txt", old_string: "hello world", new_string: "hello review-hub" },
+    });
+    const propPayload = JSON.parse((propRes.result as { content: { text: string }[] }).content[0].text);
+    const changeId = propPayload.changeId as string;
+
+    const statusRes = await conn.call("tools/call", {
+      name: "get_change_status",
+      arguments: { changeId },
+    });
+    const statusPayload = JSON.parse((statusRes.result as { content: { text: string }[] }).content[0].text);
+    assert.equal(statusPayload.changeId, changeId);
+    assert.equal(statusPayload.overallStatus, "pending");
+    assert.equal(statusPayload.isFullyResolved, false);
+    assert.equal(statusPayload.hunks.pending, 1);
+    assert.equal(statusPayload.hunks.accepted, 0);
+
+    // Accept and check resolved status
+    await conn.call("tools/call", {
+      name: "accept",
+      arguments: { changeId },
+    });
+
+    const resolvedRes = await conn.call("tools/call", {
+      name: "get_change_status",
+      arguments: { changeId },
+    });
+    const resolvedPayload = JSON.parse((resolvedRes.result as { content: { text: string }[] }).content[0].text);
+    assert.equal(resolvedPayload.overallStatus, "resolved");
+    assert.equal(resolvedPayload.isFullyResolved, true);
+    assert.equal(resolvedPayload.hunks.pending, 0);
+    assert.equal(resolvedPayload.hunks.accepted, 1);
+  } finally {
+    conn.proc.kill();
+    await hub.stop();
+  }
+});

@@ -1,6 +1,6 @@
 {
   "name": "@review-hub/core",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Core Review Hub engine: SQLite change store, hunk diffing, and REST server",
   "license": "MIT",
   "main": "./dist/hub-server.cjs",

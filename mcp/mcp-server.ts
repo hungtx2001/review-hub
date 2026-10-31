@@ -507,6 +507,43 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_change_status",
+  {
+    title: "Get change status",
+    description:
+      "Check if your staged change was accepted, rejected, or is still pending review by the human user.",
+    inputSchema: {
+      changeId: z.string().optional().describe("Unique identifier of the change set returned by propose_edit or propose_write."),
+      path: z.string().optional().describe("Workspace-relative path to the file."),
+    },
+  },
+  async (args) => {
+    const { path, changeId } = args as { path?: string; changeId?: string };
+    const workspace = changeId ? workspaceOf() : await resolveWorkspace(path);
+    const query: Record<string, string> = { workspace };
+    if (changeId) query.changeId = changeId;
+    if (path) query.path = path;
+    const res = await callHub<{ changeSet: ChangeSet }>("/changes/get", { query });
+    const cs = res.changeSet;
+    const pending = cs.hunks.filter((h) => h.decision === "pending").length;
+    const accepted = cs.hunks.filter((h) => h.decision === "accepted").length;
+    const rejected = cs.hunks.filter((h) => h.decision === "rejected").length;
+    return ok({
+      changeId: cs.id,
+      path: cs.path,
+      overallStatus: cs.status,
+      isFullyResolved: cs.status === "resolved",
+      hunks: {
+        total: cs.hunks.length,
+        pending,
+        accepted,
+        rejected,
+      },
+    });
+  },
+);
+
+server.registerTool(
   "accept",
   {
     title: "Accept change",

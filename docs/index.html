@@ -339,6 +339,7 @@
         <a href="https://github.com/hungtx2001/review-hub" target="_blank" rel="noopener">GitHub</a>
         <a href="https://www.npmjs.com/package/review-hub-mcp" target="_blank" rel="noopener">npm</a>
         <a href="#install">Installation</a>
+        <a href="#faq">FAQ</a>
       </nav>
     </header>
 
@@ -456,6 +457,45 @@
           </div>
         </div>
       </section>
+    
+      <!-- FAQ Section -->
+      <section id="faq" style="margin-bottom: 70px;">
+        <div class="section-title">
+          <h2>Frequently Asked Questions</h2>
+          <p>Everything you need to know about Review Hub</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+          <div class="step-card">
+            <h4>🔒 Does Review Hub send my code to the cloud?</h4>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 8px;">
+              <strong>No, never.</strong> Review Hub runs 100% locally on your machine. All changes, baselines, and diffs are kept in a local SQLite store (<code>~/.review-hub/hub.db</code>). No telemetry, no external server.
+            </p>
+          </div>
+
+          <div class="step-card">
+            <h4>🤖 Which AI coding agents are supported?</h4>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 8px;">
+              Works with any tool that supports MCP (Claude Code, Cursor, Cline, Roo Code, Antigravity, Windsurf, etc.). Even if an AI writes directly via shell, our watcher intercepts it.
+            </p>
+          </div>
+
+          <div class="step-card">
+            <h4>⚡ Can I use VS Code and JetBrains together?</h4>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 8px;">
+              <strong>Yes!</strong> Review Hub's local hub server coordinates across multiple IDE windows. Changes proposed in one editor update instantly across all open windows.
+            </p>
+          </div>
+
+          <div class="step-card">
+            <h4>🛡️ What if the AI refuses to call MCP?</h4>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 8px;">
+              Click <strong>Copy AI Agent Rules</strong> in the Review Hub toolbar and paste the rules into <code>CLAUDE.md</code> or <code>.cursorrules</code>. You can also disable native write tools in Cline / Roo Code settings.
+            </p>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <footer>
