@@ -1,0 +1,271 @@
+{
+  "name": "review-hub-vscode",
+  "displayName": "Review Hub",
+  "description": "Always see what AI coding agents changed in your project, and accept or reject individual hunks. Works with Claude Code, opencode, dsh, Cline, Roo via MCP, and catches direct writes too.",
+  "version": "0.3.0",
+  "publisher": "review-hub",
+  "license": "MIT",
+  "preview": true,
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:review-hub.changes",
+    "onCommand:review-hub.setCheckpoint",
+    "onCommand:review-hub.openChanges"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "review-hub.setCheckpoint",
+        "title": "Review Hub: Set Checkpoint (accept current state)"
+      },
+      {
+        "command": "review-hub.clearCheckpoint",
+        "title": "Review Hub: Clear Checkpoint"
+      },
+      {
+        "command": "review-hub.openChanges",
+        "title": "Review Hub: Show Changes"
+      },
+      {
+        "command": "review-hub.refresh",
+        "title": "Review Hub: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "review-hub.openDiff",
+        "title": "Review Hub: Open Diff"
+      },
+      {
+        "command": "review-hub.openSideBySide",
+        "title": "Review Hub: Open Side-by-Side Diff",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "review-hub.openFile",
+        "title": "Review Hub: Open File (new content)",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "review-hub.acceptAll",
+        "title": "Review Hub: Accept All Changes"
+      },
+      {
+        "command": "review-hub.rejectAll",
+        "title": "Review Hub: Reject All Changes"
+      },
+      {
+        "command": "review-hub.undoFile",
+        "title": "Review Hub: Undo File",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "review-hub.acceptHunk",
+        "title": "Review Hub: Accept Hunk"
+      },
+      {
+        "command": "review-hub.rejectHunk",
+        "title": "Review Hub: Reject Hunk"
+      },
+      {
+        "command": "review-hub.acceptFile",
+        "title": "Review Hub: Accept File",
+        "icon": "$(check)"
+      },
+      {
+        "command": "review-hub.rejectFile",
+        "title": "Review Hub: Reject File",
+        "icon": "$(chrome-close)"
+      },
+      {
+        "command": "review-hub.stagedAcceptAll",
+        "title": "Review Hub: Accept Every Change in This File",
+        "icon": "$(check)"
+      },
+      {
+        "command": "review-hub.stagedRejectAll",
+        "title": "Review Hub: Reject Every Change in This File",
+        "icon": "$(chrome-close)"
+      },
+      {
+        "command": "review-hub.registerMcp",
+        "title": "Review Hub: Copy MCP Config for AI Tools",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "review-hub.installInstructions",
+        "title": "Review Hub: Install agent instructions"
+      },
+      {
+        "command": "review-hub.showHubInfo",
+        "title": "Review Hub: Show Hub Info"
+      },
+      {
+        "command": "review-hub.copyMcpConfig",
+        "title": "Review Hub: Copy MCP Config for AI Tools",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "review-hub.copyAgentRules",
+        "title": "Review Hub: Copy AI Agent Rules to Clipboard",
+        "icon": "$(book)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "review-hub",
+          "title": "Review Hub",
+          "icon": "resources/icons/review-hub.svg"
+        }
+      ]
+    },
+    "views": {
+      "review-hub": [
+        {
+          "id": "review-hub.changes",
+          "name": "Changes",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "review-hub.setCheckpoint",
+          "when": "view == review-hub.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "review-hub.acceptAll",
+          "when": "view == review-hub.changes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "review-hub.rejectAll",
+          "when": "view == review-hub.changes",
+          "group": "navigation@3"
+        },
+        {
+          "command": "review-hub.refresh",
+          "when": "view == review-hub.changes",
+          "group": "navigation@4"
+        },
+        {
+          "command": "review-hub.copyMcpConfig",
+          "when": "view == review-hub.changes",
+          "group": "navigation@5"
+        },
+        {
+          "command": "review-hub.copyAgentRules",
+          "when": "view == review-hub.changes",
+          "group": "navigation@6"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "review-hub.openDiff",
+          "when": "resourceScheme == file",
+          "group": "reviewhub@1"
+        },
+        {
+          "command": "review-hub.openSideBySide",
+          "when": "resourceScheme == file",
+          "group": "reviewhub@2"
+        },
+        {
+          "command": "review-hub.acceptFile",
+          "when": "resourceScheme == file",
+          "group": "reviewhub@3"
+        },
+        {
+          "command": "review-hub.rejectFile",
+          "when": "resourceScheme == file",
+          "group": "reviewhub@4"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "review-hub.stagedAcceptAll",
+          "when": "resourceScheme == file && reviewHub.hasStagedReview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "review-hub.stagedRejectAll",
+          "when": "resourceScheme == file && reviewHub.hasStagedReview",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Review Hub",
+      "properties": {
+        "review-hub.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Review Hub. When off, the hub server is not started and the file watcher is disabled."
+        },
+        "review-hub.watchDirectWrites": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch the workspace for direct file writes by agents (the fallback that works regardless of the agent's permission mode)."
+        },
+        "review-hub.autoOpenDiff": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open the review tab as soon as an agent changes a file. Off by default: changed files are marked with a badge in the Explorer (and in the Review Hub panel), and you open the diff by clicking one, so an agent's edits never interrupt what you are doing."
+        },
+        "review-hub.ignoreWhitespace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ignore whitespace-only changes when computing hunks."
+        },
+        "review-hub.maxFileSize": {
+          "type": "number",
+          "default": 2097152,
+          "description": "Skip hunk-level diffing for files larger than this many bytes (whole-file accept/reject only)."
+        },
+        "review-hub.excludeGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra glob patterns ignored by the watcher and snapshot. Built-in defaults (VCS, deps, caches, ML/data artifacts) always apply; entries here are added to them."
+        },
+        "review-hub.maxSnapshotFiles": {
+          "type": "number",
+          "default": 5000,
+          "description": "Hard cap on how many files a checkpoint snapshot will read. Keeps activation cheap on very large repositories."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@review-hub/core": "*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "diff": "^9.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/diff": "^6.0.0",
+    "@types/node": "^22.20.1",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3",
+    "@vscode/vsce": "^4.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hungtx2001/review-hub"
+  },
+  "scripts": {
+    "package": "vsce package --no-dependencies"
+  }
+}

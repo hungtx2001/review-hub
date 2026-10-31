@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": [
+      "ES2022"
+    ],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [
+      "node",
+      "vscode"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@review-hub/core": [
+        "../core/src/index.ts"
+      ],
+      "@review-hub/core/*": [
+        "../core/src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*"
+  ]
+}

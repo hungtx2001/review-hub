@@ -1,0 +1,97 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+}
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+.hunkbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.08));
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+.spacer {
+  flex: 1;
+}
+.stat {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+.btn {
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.6;
+}
+.btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.3));
+}
+.line {
+  display: flex;
+  white-space: pre;
+}
+.line .gutter {
+  flex: none;
+  width: 56px;
+  padding-right: 10px;
+  text-align: right;
+  opacity: 0.45;
+  user-select: none;
+}
+.line .text {
+  flex: 1;
+  padding-right: 12px;
+}
+.line.deleted {
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.15));
+}
+.line.added {
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(63, 185, 80, 0.15));
+}
+.line.deleted .text,
+.line.deleted .gutter {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+.line.added .text,
+.line.added .gutter {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.badge.ok {
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(63, 185, 80, 0.2));
+  color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+.badge.no {
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.2));
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+.hunk-highlight {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  transition: outline 0.3s ease;
+}

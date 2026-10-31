@@ -1,0 +1,42 @@
+{
+  "name": "review-hub-monorepo",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Review Hub Monorepo: Core engine, VS Code extension, MCP server, and JetBrains plugin",
+  "license": "MIT",
+  "workspaces": [
+    "core",
+    "mcp",
+    "vscode"
+  ],
+  "scripts": {
+    "build": "node esbuild.js",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "package:vscode": "cd vscode && vsce package --no-dependencies",
+    "build:mcp": "node esbuild.js",
+    "pack:mcp": "node esbuild.js && cd mcp && npm pack",
+    "publish:mcp": "node esbuild.js && cd mcp && npm publish --access public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "diff": "^9.0.0",
+    "json5": "^2.2.3",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/diff": "^6.0.0",
+    "@types/node": "^22.20.1",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3",
+    "@vscode/vsce": "^4.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hungtx2001/review-hub"
+  }
+}

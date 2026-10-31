@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "lib": [
+      "ES2022"
+    ],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": [
+      "node",
+      "vscode"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@review-hub/core": [
+        "core/src/index.ts"
+      ],
+      "@review-hub/core/*": [
+        "core/src/*"
+      ]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test"
+  ],
+  "include": [
+    "core/src",
+    "vscode/src",
+    "mcp"
+  ]
+}

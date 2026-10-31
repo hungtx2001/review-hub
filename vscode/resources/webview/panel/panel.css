@@ -1,0 +1,114 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: transparent;
+}
+.header,
+.actions,
+.file-head,
+.hunk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+.actions {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  flex-wrap: wrap;
+}
+.spacer {
+  flex: 1;
+}
+.count {
+  font-weight: 600;
+}
+.stat {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+.stat.add {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+.stat.del {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+.btn {
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.6;
+}
+.btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.3));
+}
+.group {
+  padding: 8px 8px 2px;
+  font-weight: 600;
+  opacity: 0.8;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.file {
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+.file-head {
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.file-head:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.twisty {
+  width: 12px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.name {
+  font-weight: 600;
+}
+.dir {
+  opacity: 0.6;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hunk {
+  padding: 3px 8px 3px 26px;
+  cursor: pointer;
+}
+.hunk:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.hunk .line,
+.hunk .stat {
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.badge {
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.badge.ok {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+.badge.no {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+.empty {
+  padding: 16px 8px;
+  opacity: 0.7;
+}
