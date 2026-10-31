@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Review Hub - Safe, Hunk-by-Hunk Review for AI Code Changes</title>
   <meta name="description" content="Always see what AI coding agents changed in your project, and accept or reject individual hunks. Works with Claude Code, Cursor, Cline, Roo Code via MCP.">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/></svg>">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 3v12a3 3 0 0 0 3 3h3'/><circle cx='6' cy='18' r='3'/><circle cx='18' cy='6' r='3'/><path d='M15 6h-3'/><path d='M9 15l3-3'/></svg>">
   <style>
     :root {
       --bg: #0b0f19;
@@ -329,8 +329,12 @@
     <header>
       <a href="#" class="brand">
         <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 3v12a3 3 0 0 0 3 3h3"/>
+            <circle cx="6" cy="18" r="3" fill="white"/>
+            <circle cx="18" cy="6" r="3" fill="white"/>
+            <path d="M15 6h-3"/>
+            <path d="M9 15l3-3"/>
           </svg>
         </div>
         Review Hub
@@ -358,7 +362,14 @@
           <div class="download-card">
             <div>
               <div class="card-header">
-                <div class="card-icon">⚡</div>
+                <div class="card-icon" style="background: rgba(0, 122, 204, 0.1); border-color: rgba(0, 122, 204, 0.3);">
+                  <svg width="26" height="26" viewBox="0 0 256 256" fill="none">
+                    <path d="M180.7 254.3a17.2 17.2 0 0 0 16-2.8l51.5-40a17.2 17.2 0 0 0 6.8-13.6V58.1a17.2 17.2 0 0 0-6.8-13.6l-51.5-40a17.2 17.2 0 0 0-21.7 2.4l-95.8 87.7L39.8 63.8a12.5 12.5 0 0 0-16.7 1.4L4.8 81.3a12.5 12.5 0 0 0 0 17.4l41.6 38.6L4.8 156a12.5 12.5 0 0 0 0 17.4l18.3 16.1a12.5 12.5 0 0 0 16.7 1.4l39.3-30.8 95.8 87.7c4 3.7 9.5 5.7 15.1 5.7l10.7-.2z" fill="#0065A9"/>
+                    <path d="M196.7 251.5a17.2 17.2 0 0 0 6.8-13.6V58.1a17.2 17.2 0 0 0-6.8-13.6l-51.5-40a17.2 17.2 0 0 0-21.7 2.4l-95.8 87.7 51.7 41.5 67.8-62.1 41.3 32.7v79.4l-41.3 32.7-67.8-62.1-51.7 41.5 95.8 87.7a17.2 17.2 0 0 0 21.7 2.4l51.5-40.2z" fill="#007ACC"/>
+                    <path d="M196.7 44.5L145.2 4.5a17.2 17.2 0 0 0-21.7 2.4l-95.8 87.7 51.7 41.5 67.8-62.1 41.3 32.7V44.5z" fill="#0065A9"/>
+                    <path d="M145.2 251.5l51.5-40a17.2 17.2 0 0 0 6.8-13.6v-62.2l-41.3 32.7-67.8-62.1-51.7 41.5 95.8 87.7a17.2 17.2 0 0 0 21.7 2.4l-15 13.6z" fill="#007ACC"/>
+                  </svg>
+                </div>
                 <div class="card-title">
                   <h3>VS Code Extension</h3>
                   <span>review-hub-vscode</span>
@@ -375,7 +386,20 @@
           <div class="download-card">
             <div>
               <div class="card-header">
-                <div class="card-icon">🧩</div>
+                <div class="card-icon" style="background: rgba(175, 38, 255, 0.1); border-color: rgba(175, 38, 255, 0.3);">
+                  <svg width="26" height="26" viewBox="0 0 100 100" fill="none">
+                    <defs>
+                      <linearGradient id="jb-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#FF318C" />
+                        <stop offset="50%" stop-color="#AF26FF" />
+                        <stop offset="100%" stop-color="#00A2FF" />
+                      </linearGradient>
+                    </defs>
+                    <rect width="100" height="100" rx="22" fill="url(#jb-grad)"/>
+                    <rect x="12" y="12" width="76" height="76" rx="14" fill="#000000"/>
+                    <rect x="22" y="66" width="36" height="9" rx="2" fill="#FFFFFF"/>
+                  </svg>
+                </div>
                 <div class="card-title">
                   <h3>JetBrains Plugin</h3>
                   <span>IntelliJ, WebStorm, PyCharm...</span>
@@ -392,7 +416,15 @@
           <div class="download-card">
             <div>
               <div class="card-header">
-                <div class="card-icon">🤖</div>
+                <div class="card-icon" style="background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3);">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="16" rx="3" fill="rgba(56, 189, 248, 0.15)"/>
+                    <circle cx="9" cy="9" r="1.5" fill="#38bdf8"/>
+                    <circle cx="15" cy="9" r="1.5" fill="#38bdf8"/>
+                    <path d="M8 15h8"/>
+                    <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
+                  </svg>
+                </div>
                 <div class="card-title">
                   <h3>MCP Server</h3>
                   <span>review-hub-mcp</span>
