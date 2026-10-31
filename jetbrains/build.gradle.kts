@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.reviewhub"
-version = "0.3.1"
+version = providers.gradleProperty("pluginVersion").getOrElse("0.3.1")
 
 repositories {
     mavenCentral()
@@ -44,6 +44,10 @@ intellijPlatform {
             sinceBuild = "241"
             untilBuild = "262.*"
         }
+    }
+
+    publishing {
+        token.set(providers.environmentVariable("JETBRAINS_TOKEN"))
     }
 }
 

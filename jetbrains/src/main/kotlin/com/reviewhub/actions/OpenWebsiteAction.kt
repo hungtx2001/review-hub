@@ -9,3 +9,4 @@ class OpenWebsiteAction : AnAction("Open Review Hub Website") {
         BrowserUtil.browse("https://hungtx2001.github.io/review-hub/")
     }
 }
+

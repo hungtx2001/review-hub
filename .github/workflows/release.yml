@@ -113,11 +113,90 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # =========================================================================
+      # Version Check: Kiểm tra từng thành phần độc lập trước khi publish
+      # Chỉ publish thành phần nào thực sự có version mới trên Registry/Marketplace
+      # =========================================================================
+      - name: Check Component Versions for Publishing
+        id: check_versions
+        shell: bash
+        run: |
+          echo "======================================================="
+          echo "Checking versions of MCP, VS Code, and JetBrains..."
+          echo "======================================================="
+
+          # 1. MCP Server Check (so sánh với npm registry)
+          LOCAL_MCP_VER=$(node -p "require('./mcp/package.json').version")
+          REMOTE_MCP_VER=$(npm view review-hub-mcp version 2>/dev/null || echo "none")
+          echo "MCP: local=$LOCAL_MCP_VER | npm=$REMOTE_MCP_VER"
+          if [ "$LOCAL_MCP_VER" != "$REMOTE_MCP_VER" ]; then
+            echo "publish_mcp=true" >> $GITHUB_OUTPUT
+            echo "-> [YES] MCP Server version is new. Will publish to npm."
+          else
+            echo "publish_mcp=false" >> $GITHUB_OUTPUT
+            echo "-> [SKIP] MCP Server version $LOCAL_MCP_VER already exists on npm."
+          fi
+
+          # 2. VS Code Extension Check (so sánh với VS Code Marketplace)
+          LOCAL_VSCODE_VER=$(node -p "require('./vscode/package.json').version")
+          REMOTE_VSCODE_VER=$(npx --yes @vscode/vsce show review-hub.review-hub-vscode --json 2>/dev/null | node -p "try { const d = JSON.parse(require('fs').readFileSync(0, 'utf-8')); d.versions[0].version } catch { 'none' }" 2>/dev/null || echo "none")
+          echo "VS Code: local=$LOCAL_VSCODE_VER | marketplace=$REMOTE_VSCODE_VER"
+          if [ "$LOCAL_VSCODE_VER" != "$REMOTE_VSCODE_VER" ]; then
+            echo "publish_vscode=true" >> $GITHUB_OUTPUT
+            echo "-> [YES] VS Code Extension version is new. Will publish to Marketplace."
+          else
+            echo "publish_vscode=false" >> $GITHUB_OUTPUT
+            echo "-> [SKIP] VS Code Extension version $LOCAL_VSCODE_VER already on Marketplace."
+          fi
+
+          # 3. JetBrains Plugin Check (so sánh với Git tag gần nhất)
+          LOCAL_JB_VER=$(grep "pluginVersion" jetbrains/gradle.properties | cut -d'=' -f2 | tr -d ' 
+')
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            PREV_JB_VER=$(git show "$PREV_TAG:jetbrains/gradle.properties" 2>/dev/null | grep "pluginVersion" | cut -d'=' -f2 | tr -d ' 
+' || echo "none")
+          else
+            PREV_JB_VER="none"
+          fi
+          echo "JetBrains: local=$LOCAL_JB_VER | prev_tag ($PREV_TAG)=$PREV_JB_VER"
+          if [ "$LOCAL_JB_VER" != "$PREV_JB_VER" ] || [ -z "$PREV_TAG" ]; then
+            echo "publish_jetbrains=true" >> $GITHUB_OUTPUT
+            echo "-> [YES] JetBrains Plugin version changed. Will publish to JetBrains Marketplace."
+          else
+            echo "publish_jetbrains=false" >> $GITHUB_OUTPUT
+            echo "-> [SKIP] JetBrains Plugin version unchanged ($LOCAL_JB_VER)."
+          fi
+
+      # -------------------------------------------------------------------------
+      # 1. Publish MCP Server lên npm
+      # -------------------------------------------------------------------------
       - name: Publish MCP Server to npm
-        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && env.NPM_TOKEN != ''
+        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_mcp == 'true' && env.NPM_TOKEN != ''
         run: |
           cd mcp
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          npm publish --access public || echo "npm publish skipped or already published"
+          npm publish --access public
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # -------------------------------------------------------------------------
+      # 2. Publish VS Code Extension lên Visual Studio Marketplace
+      # -------------------------------------------------------------------------
+      - name: Publish VS Code Extension to Visual Studio Marketplace
+        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_vscode == 'true' && env.VSCE_PAT != ''
+        run: |
+          npx --yes @vscode/vsce publish --packagePath vscode/*.vsix -p ${{ secrets.VSCE_PAT }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      # -------------------------------------------------------------------------
+      # 3. Publish Plugin lên JetBrains Marketplace
+      # -------------------------------------------------------------------------
+      - name: Publish Plugin to JetBrains Marketplace
+        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_jetbrains == 'true' && env.JETBRAINS_TOKEN != ''
+        run: |
+          cd jetbrains
+          ./gradlew publishPlugin
+        env:
+          JETBRAINS_TOKEN: ${{ secrets.JETBRAINS_TOKEN }}
