@@ -484,12 +484,12 @@ object ReviewHubInlineReview {
         titleLabel.font = titleLabel.font.deriveFont(Font.BOLD)
         leftPanel.add(titleLabel)
 
-        val prevBtn = javax.swing.JButton("↑ Prev", AllIcons.Actions.MoveUp)
+        val prevBtn = javax.swing.JButton("Prev", AllIcons.Actions.MoveUp)
         prevBtn.isFocusable = false
         prevBtn.addActionListener { scrollToPrevHunk(editor) }
         leftPanel.add(prevBtn)
 
-        val nextBtn = javax.swing.JButton("↓ Next", AllIcons.Actions.MoveDown)
+        val nextBtn = javax.swing.JButton("Next", AllIcons.Actions.MoveDown)
         nextBtn.isFocusable = false
         nextBtn.addActionListener { scrollToNextHunk(editor) }
         leftPanel.add(nextBtn)
