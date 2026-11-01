@@ -1,6 +1,6 @@
 {
   "name": "review-hub-mcp",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Model Context Protocol (MCP) server for Review Hub - Hunk-by-hunk AI code change review for VS Code and JetBrains IDEs",
   "keywords": [
     "mcp",

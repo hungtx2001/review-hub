@@ -208,6 +208,84 @@ test("propose_edit adapts CRLF/LF line endings gracefully", async () => {
   }
 });
 
+
+test("propose_edit adapts indentation differences (fuzzy matching)", async () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-fuzzy-"));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-ws-fuzzy-"));
+  // File has 4 spaces indentation
+  const fileContent = "function test() {\n    if (ok) {\n        return 1;\n    }\n}\n";
+  fs.writeFileSync(path.join(workspace, "code.ts"), fileContent);
+  const hub = new HubServer({ baseDir, token: "tok", excludeGlobs: [] });
+  const addr = await hub.start(0);
+  await hub.store.setCheckpoint(workspace, { maxFileSize: 1e9, excludeGlobs: [] });
+
+  const conn = spawnMcp({ REVIEW_HUB_URL: addr.url, REVIEW_HUB_TOKEN: "tok", REVIEW_HUB_WORKSPACE: workspace });
+  try {
+    await init(conn);
+    // LLM sends 2 spaces indentation
+    const res = await conn.call("tools/call", {
+      name: "propose_edit",
+      arguments: {
+        path: "code.ts",
+        old_string: "if (ok) {\n  return 1;\n}",
+        new_string: "if (ok) {\n  return 42;\n}",
+      },
+    });
+    const text = (res.result as { content: { text: string }[] }).content[0].text;
+    const payload = JSON.parse(text);
+    assert.equal(payload.status, "staged_for_review");
+    assert.equal(payload.hunks, 1);
+
+    const readRes = await conn.call("tools/call", {
+      name: "read_file",
+      arguments: { path: "code.ts" },
+    });
+    const readPayload = JSON.parse((readRes.result as { content: { text: string }[] }).content[0].text);
+    // Should adapt to 4 spaces indentation!
+    assert.match(readPayload.content, /        return 42;/);
+  } finally {
+    conn.proc.kill();
+    await hub.stop();
+  }
+});
+
+test("propose_edit tolerates trailing whitespace in file (fuzzy matching)", async () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-trailing-"));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-ws-trailing-"));
+  // File has trailing spaces
+  fs.writeFileSync(path.join(workspace, "trailing.txt"), "const x = 1;   \nconst y = 2;  \n");
+  const hub = new HubServer({ baseDir, token: "tok", excludeGlobs: [] });
+  const addr = await hub.start(0);
+  await hub.store.setCheckpoint(workspace, { maxFileSize: 1e9, excludeGlobs: [] });
+
+  const conn = spawnMcp({ REVIEW_HUB_URL: addr.url, REVIEW_HUB_TOKEN: "tok", REVIEW_HUB_WORKSPACE: workspace });
+  try {
+    await init(conn);
+    // LLM sends clean strings without trailing spaces
+    const res = await conn.call("tools/call", {
+      name: "propose_edit",
+      arguments: {
+        path: "trailing.txt",
+        old_string: "const x = 1;\nconst y = 2;",
+        new_string: "const x = 100;\nconst y = 200;",
+      },
+    });
+    const text = (res.result as { content: { text: string }[] }).content[0].text;
+    const payload = JSON.parse(text);
+    assert.equal(payload.status, "staged_for_review");
+
+    const readRes = await conn.call("tools/call", {
+      name: "read_file",
+      arguments: { path: "trailing.txt" },
+    });
+    const readPayload = JSON.parse((readRes.result as { content: { text: string }[] }).content[0].text);
+    assert.match(readPayload.content, /const x = 100;\nconst y = 200;/);
+  } finally {
+    conn.proc.kill();
+    await hub.stop();
+  }
+});
+
 test("read_file supports start_line, end_line, and line_numbers", async () => {
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-read-"));
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "rh-mcp-ws-read-"));

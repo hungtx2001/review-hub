@@ -232,6 +232,144 @@ function countOccurrences(haystack: string, needle: string): number {
  * Replaces `oldStr` with `newStr` inside `src`. Tolerates newline differences (CRLF vs LF)
  * so that AI agents editing Windows or cross-platform files do not fail on line endings.
  */
+
+function getLeadingWhitespace(line: string): string {
+  return line.match(/^[ \t]*/)?.[0] ?? "";
+}
+
+function detectIndentUnit(lines: string[]): string {
+  let minDiff = Infinity;
+  let isTab = false;
+  const indents: number[] = [];
+  for (const l of lines) {
+    if (l.trim().length === 0) continue;
+    const ws = getLeadingWhitespace(l);
+    if (ws.includes("\t")) isTab = true;
+    indents.push(ws.length);
+  }
+  indents.sort((a, b) => a - b);
+  for (let i = 1; i < indents.length; i++) {
+    const diff = indents[i] - indents[i - 1];
+    if (diff > 0 && diff < minDiff) {
+      minDiff = diff;
+    }
+  }
+  if (isTab) return "\t";
+  if (minDiff !== Infinity && minDiff > 0) return " ".repeat(minDiff);
+  return "  ";
+}
+
+function normLine(line: string): string {
+  return line.trim().replace(/[ \t]+/g, " ");
+}
+
+function fuzzyReplace(
+  src: string,
+  oldStr: string,
+  newStr: string,
+  replaceAll?: boolean,
+): { matched: true; next: string } | { matched: false; error?: string } {
+  const isCrlf = src.includes("\r\n");
+  const eol = isCrlf ? "\r\n" : "\n";
+  const srcLines = src.split(/\r?\n/);
+  const srcHadTrailingEol = src.endsWith("\n");
+
+  if (srcHadTrailingEol && srcLines.length > 0 && srcLines[srcLines.length - 1] === "") {
+    srcLines.pop();
+  }
+
+  const rawOldLines = oldStr.split(/\r?\n/);
+  const oldHadTrailingEol = oldStr.endsWith("\n");
+  const oldLines = (oldHadTrailingEol && rawOldLines.length > 1 && rawOldLines[rawOldLines.length - 1] === "")
+    ? rawOldLines.slice(0, -1)
+    : rawOldLines;
+
+  const rawNewLines = newStr.split(/\r?\n/);
+  const newHadTrailingEol = newStr.endsWith("\n");
+  const newLines = (newHadTrailingEol && rawNewLines.length > 1 && rawNewLines[rawNewLines.length - 1] === "")
+    ? rawNewLines.slice(0, -1)
+    : rawNewLines;
+
+  const oldNorm = oldLines.map(normLine);
+  if (oldNorm.length === 0 || (oldNorm.length === 1 && oldNorm[0] === "")) {
+    return { matched: false };
+  }
+
+  const matches: { start: number; end: number }[] = [];
+  for (let i = 0; i <= srcLines.length - oldNorm.length; i++) {
+    let ok = true;
+    for (let k = 0; k < oldNorm.length; k++) {
+      if (normLine(srcLines[i + k]) !== oldNorm[k]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      matches.push({ start: i, end: i + oldNorm.length });
+    }
+  }
+
+  if (matches.length === 0) {
+    return { matched: false };
+  }
+  if (matches.length > 1 && !replaceAll) {
+    return {
+      matched: false,
+      error: `old_string (fuzzy matched) occurs ${matches.length} times in file; pass replace_all: true or include more surrounding context to make it unique.`,
+    };
+  }
+
+  const fileIndentUnit = detectIndentUnit(srcLines);
+  const oldIndentUnit = detectIndentUnit(oldLines);
+
+  const resultLines = [...srcLines];
+  for (let m = matches.length - 1; m >= 0; m--) {
+    const { start, end } = matches[m];
+    const matchedSrcSlice = resultLines.slice(start, end);
+
+    let oldMinIndentLen = Infinity;
+    for (const l of oldLines) {
+      if (l.trim().length === 0) continue;
+      const ws = getLeadingWhitespace(l);
+      if (ws.length < oldMinIndentLen) {
+        oldMinIndentLen = ws.length;
+      }
+    }
+    if (oldMinIndentLen === Infinity) {
+      oldMinIndentLen = 0;
+    }
+
+    let srcBaseIndent = "";
+    for (let k = 0; k < oldLines.length; k++) {
+      if (oldLines[k].trim().length > 0 && getLeadingWhitespace(oldLines[k]).length === oldMinIndentLen) {
+        srcBaseIndent = getLeadingWhitespace(matchedSrcSlice[k]);
+        break;
+      }
+    }
+
+    const sliceIndentUnit = detectIndentUnit(matchedSrcSlice);
+    const effectiveSrcIndentUnit = sliceIndentUnit.length > 0 ? sliceIndentUnit : fileIndentUnit;
+    const oldUnitLen = oldIndentUnit.length || 2;
+
+    const adaptedNewLines = newLines.map((nl) => {
+      if (nl.trim().length === 0) return "";
+      const nlWs = getLeadingWhitespace(nl);
+      const relSpaces = Math.max(0, nlWs.length - oldMinIndentLen);
+      const level = Math.round(relSpaces / oldUnitLen);
+      const targetIndent = srcBaseIndent + effectiveSrcIndentUnit.repeat(level);
+      return targetIndent + nl.trim();
+    });
+
+    resultLines.splice(start, end - start, ...adaptedNewLines);
+  }
+
+  let next = resultLines.join(eol);
+  if (srcHadTrailingEol) {
+    next += eol;
+  }
+  return { matched: true, next };
+}
+
 function adaptReplacement(
   src: string,
   oldStr: string,
@@ -253,6 +391,17 @@ function adaptReplacement(
       count = normalizedCount;
       effectiveOld = targetOld;
       effectiveNew = targetNew;
+    }
+  }
+
+  if (count === 0 && oldStr.trim().length > 0) {
+    // 3. Try fuzzy whitespace & indentation tolerance
+    const fuzzy = fuzzyReplace(src, oldStr, newStr, replaceAll);
+    if (fuzzy.matched) {
+      return { success: true, next: fuzzy.next };
+    }
+    if (fuzzy.error) {
+      return { success: false, error: fuzzy.error };
     }
   }
 
