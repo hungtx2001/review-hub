@@ -30,8 +30,6 @@ object MergedDiff {
         var baseIdx = 0
 
         for ((index, hunk) in sortedHunks.withIndex()) {
-            if (hunk.decision != "pending") continue
-
             // 1. Context lines before hunk
             if (hunk.oldStart > baseIdx) {
                 val endSlice = hunk.oldStart.coerceAtMost(baseLines.size)
@@ -44,19 +42,41 @@ object MergedDiff {
                 baseIdx = hunk.oldStart
             }
 
-            // 2. Deleted lines (from baseline)
-            if (hunk.oldLines.isNotEmpty()) {
-                val start = lines.size
-                lines.addAll(hunk.oldLines)
-                blocks.add(MergedBlock(MergedBlockKind.DELETED, start, lines.size, hunk.id, index + 1))
-                baseIdx += hunk.oldLines.size
-            }
+            when (hunk.decision) {
+                "accepted" -> {
+                    // Accepted hunk: its proposed lines are accepted and appear as context
+                    if (hunk.newLines.isNotEmpty()) {
+                        val start = lines.size
+                        lines.addAll(hunk.newLines)
+                        blocks.add(MergedBlock(MergedBlockKind.CONTEXT, start, lines.size))
+                    }
+                    baseIdx += hunk.oldLines.size
+                }
+                "rejected" -> {
+                    // Rejected hunk: its baseline lines remain as context
+                    if (hunk.oldLines.isNotEmpty()) {
+                        val start = lines.size
+                        lines.addAll(hunk.oldLines)
+                        blocks.add(MergedBlock(MergedBlockKind.CONTEXT, start, lines.size))
+                    }
+                    baseIdx += hunk.oldLines.size
+                }
+                else -> {
+                    // 2. Deleted lines (from baseline)
+                    if (hunk.oldLines.isNotEmpty()) {
+                        val start = lines.size
+                        lines.addAll(hunk.oldLines)
+                        blocks.add(MergedBlock(MergedBlockKind.DELETED, start, lines.size, hunk.id, index + 1))
+                        baseIdx += hunk.oldLines.size
+                    }
 
-            // 3. Added lines (from proposal)
-            if (hunk.newLines.isNotEmpty()) {
-                val start = lines.size
-                lines.addAll(hunk.newLines)
-                blocks.add(MergedBlock(MergedBlockKind.ADDED, start, lines.size, hunk.id, index + 1))
+                    // 3. Added lines (from proposal)
+                    if (hunk.newLines.isNotEmpty()) {
+                        val start = lines.size
+                        lines.addAll(hunk.newLines)
+                        blocks.add(MergedBlock(MergedBlockKind.ADDED, start, lines.size, hunk.id, index + 1))
+                    }
+                }
             }
         }
 

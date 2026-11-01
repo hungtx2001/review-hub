@@ -34,6 +34,10 @@ class MergedDiffTest {
         )
 
         val view = MergedDiff.build(baseline, hunks)
+        assertEquals(
+            listOf("line 1", "accepted 2a", "accepted 2b", "line 3", "old 4", "pending 4", "line 5"),
+            view.lines
+        )
         val nonContext = view.blocks.filter { it.kind != MergedBlockKind.CONTEXT }
         assertEquals(2, nonContext.size)
         assertEquals(MergedBlockKind.DELETED, nonContext[0].kind)

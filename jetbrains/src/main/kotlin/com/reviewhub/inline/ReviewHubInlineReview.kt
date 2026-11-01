@@ -317,27 +317,13 @@ object ReviewHubInlineReview {
         attachMouseListeners(editor)
     }
 
+    private val inFlightHunks = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     private fun attachMouseListeners(editor: Editor) {
         if (editor.getUserData(MOUSE_LISTENER_ATTACHED_KEY) == true) return
         editor.putUserData(MOUSE_LISTENER_ATTACHED_KEY, true)
 
-        // 1. Direct Swing MouseListener on editor.contentComponent
-        val content = editor.contentComponent
-        content.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) {
-                if (handleClick(editor, e.point)) {
-                    e.consume()
-                }
-            }
-        })
-
-        content.addMouseMotionListener(object : MouseMotionAdapter() {
-            override fun mouseMoved(e: MouseEvent) {
-                handleMove(editor, e.point)
-            }
-        })
-
-        // 2. EditorMouseListener for IDE-level dispatch
+        // EditorMouseListener handles IDE-level mouse events without duplicating Swing callbacks
         editor.addEditorMouseListener(object : EditorMouseListener {
             override fun mousePressed(e: EditorMouseEvent) {
                 if (handleClick(editor, e.mouseEvent.point)) {
@@ -556,8 +542,12 @@ object ReviewHubInlineReview {
         hunkId: String,
         kind: String
     ) {
+        if (!inFlightHunks.add(hunkId)) return
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: return
+        val client = hubManager.client ?: run {
+            inFlightHunks.remove(hunkId)
+            return
+        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             if (kind == "accept") {
@@ -587,6 +577,7 @@ object ReviewHubInlineReview {
                     }
                 }
                 VirtualFileManager.getInstance().asyncRefresh(null)
+                inFlightHunks.remove(hunkId)
             }
         }
     }
