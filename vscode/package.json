@@ -4,6 +4,7 @@
   "description": "Always see what AI coding agents changed in your project, and accept or reject individual hunks. Works with Claude Code, opencode, dsh, Cline, Roo via MCP, and catches direct writes too.",
   "version": "0.3.3",
   "publisher": "review-hub",
+  "author": "Tong Duy Dat, Trinh Xuan Hung",
   "license": "MIT",
   "preview": true,
   "engines": {

@@ -38,7 +38,7 @@ intellijPlatform {
             Works with Claude Code, opencode, dsh, Cline, Roo via MCP, and catches direct writes too.
         """.trimIndent()
         vendor {
-            name = "Review Hub"
+            name = "Tong Duy Dat, Trinh Xuan Hung"
         }
         ideaVersion {
             sinceBuild = "241"

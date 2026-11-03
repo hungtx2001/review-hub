@@ -2,6 +2,7 @@
   "name": "@review-hub/core",
   "version": "0.3.3",
   "description": "Core Review Hub engine: SQLite change store, hunk diffing, and REST server",
+  "author": "Tong Duy Dat, Trinh Xuan Hung",
   "license": "MIT",
   "main": "./dist/hub-server.cjs",
   "types": "./src/index.ts",

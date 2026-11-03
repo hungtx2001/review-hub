@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.reviewhub.jetbrains</id>
     <name>Review Hub (Antigravity Edition)</name>
-    <vendor email="support@reviewhub.dev" url="https://github.com/review-hub">Review Hub</vendor>
+    <vendor email="support@reviewhub.dev" url="https://github.com/TongDuyDat/hub-preview">Tong Duy Dat, Trinh Xuan Hung</vendor>
 
     <description><![CDATA[
         <h2>Review Hub for JetBrains IDEs</h2>
