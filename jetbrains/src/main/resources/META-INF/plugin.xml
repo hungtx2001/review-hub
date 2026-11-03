@@ -83,10 +83,6 @@
                 class="com.reviewhub.actions.RegisterMcpAction"
                 text="Configure AI Tools (MCP)..."
                 description="Scan and configure Review Hub MCP for AI CLIs (Codex, Claude Code, Cursor, Windsurf, OpenCode, Cline, Roo Code)"/>
-        <action id="ReviewHub.OpenWebsite"
-                class="com.reviewhub.actions.OpenWebsiteAction"
-                text="Open Website &amp; Docs"
-                description="Open Review Hub official website and documentation"/>
         <action id="ReviewHub.Refresh"
                 class="com.reviewhub.actions.RefreshAction"
                 text="Refresh Changes"
@@ -99,8 +95,6 @@
             <reference ref="ReviewHub.RegisterMcp"/>
             <reference ref="ReviewHub.CopyMcpConfig"/>
             <reference ref="ReviewHub.CopyAgentRules"/>
-            <separator/>
-            <reference ref="ReviewHub.OpenWebsite"/>
         </group>
 
         <group id="ReviewHub.ToolBar" text="Review Hub Actions" popup="false">
@@ -128,7 +122,6 @@
             <reference ref="ReviewHub.CopyMcpConfig"/>
             <reference ref="ReviewHub.CopyAgentRules"/>
             <separator/>
-            <reference ref="ReviewHub.OpenWebsite"/>
             <reference ref="ReviewHub.Refresh"/>
         </group>
     </actions>

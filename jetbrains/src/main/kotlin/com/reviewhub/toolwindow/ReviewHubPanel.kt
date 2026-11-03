@@ -275,7 +275,6 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
             "ReviewHub.CopyMcpConfig",
             "ReviewHub.CopyAgentRules",
             "ReviewHub.RegisterMcp",
-            "ReviewHub.OpenWebsite"
         ).forEach { actionId ->
             val act = am.getAction(actionId)
             if (act != null) {
