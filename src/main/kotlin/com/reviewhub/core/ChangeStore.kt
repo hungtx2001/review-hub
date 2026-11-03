@@ -2,6 +2,7 @@ package com.reviewhub.core
 
 import com.reviewhub.model.*
 import com.reviewhub.util.PathUtil
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -20,6 +21,10 @@ class ChangeStore {
     private val checkpoints = ConcurrentHashMap<String, CheckpointRecord>()
 
     private val listeners = mutableListOf<(workspace: String, path: String) -> Unit>()
+
+    init {
+        loadPersistedState()
+    }
 
     fun addChangeListener(listener: (workspace: String, path: String) -> Unit) {
         listeners.add(listener)
@@ -102,9 +107,22 @@ class ChangeStore {
             val diskContent = try { absFile.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
             val hash = putBaselineBlob(normWs, diskContent)
             cp.files[normRel] = hash
+            persistCheckpoint(normWs)
             diskContent
         } else {
             ""
+        }
+
+        // Snapshot initial state before AI modifications for Rollback
+        if (!cp.initialSnapshots.containsKey(normRel)) {
+            val initialBlob = if (absFile.exists() && !absFile.isDirectory) {
+                val diskContent = try { absFile.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
+                putBaselineBlob(normWs, diskContent)
+            } else {
+                "" // file did not exist before AI edits
+            }
+            cp.initialSnapshots[normRel] = initialBlob
+            persistCheckpoint(normWs)
         }
 
         val baselineExists = absFile.exists()
@@ -134,6 +152,7 @@ class ChangeStore {
         val wsMap = changesByWorkspace.computeIfAbsent(normWs) { ConcurrentHashMap() }
         wsMap[changeId] = changeSet
 
+        persistStaging(normWs)
         notifyChange(normWs, normRel)
         return changeSet
     }
@@ -176,10 +195,12 @@ class ChangeStore {
             // Advance baseline in checkpoint
             val cp = getOrCreateCheckpoint(normWs)
             cp.files[cs.path] = putBaselineBlob(normWs, resolvedContent)
+            persistCheckpoint(normWs)
         } else {
             wsMap?.put(cs.id, updatedCs)
         }
 
+        persistStaging(normWs)
         notifyChange(normWs, cs.path)
 
         val remaining = updatedHunks.count { it.decision == "pending" }
@@ -232,6 +253,7 @@ class ChangeStore {
             wsMap?.put(cs.id, updatedCs)
         }
 
+        persistStaging(normWs)
         notifyChange(normWs, cs.path)
 
         val remaining = updatedHunks.count { it.decision == "pending" }
@@ -295,21 +317,103 @@ class ChangeStore {
         val record = CheckpointRecord(
             workspace = normWs,
             setAt = System.currentTimeMillis(),
-            files = fileMap
+            files = fileMap,
+            initialSnapshots = HashMap(fileMap)
         )
         checkpoints[normWs] = record
 
         // A fresh checkpoint clears existing pending changes
         changesByWorkspace[normWs]?.clear()
+
+        persistCheckpoint(normWs)
+        persistStaging(normWs)
         notifyChange(normWs, "")
 
         return CheckpointInfo(normWs, record.setAt)
+    }
+
+    fun rollbackToCheckpoint(workspace: String): List<String> {
+        val normWs = normalizeWorkspace(workspace)
+        val cp = checkpoints[normWs] ?: return emptyList()
+        val restoredFiles = mutableListOf<String>()
+
+        for ((relPath, initialHash) in cp.initialSnapshots) {
+            val targetFile = File(normWs, relPath)
+            if (initialHash.isEmpty()) {
+                if (targetFile.exists()) {
+                    try {
+                        targetFile.delete()
+                        restoredFiles.add(relPath)
+                    } catch (_: Exception) {}
+                }
+            } else {
+                val baselineContent = readBaselineBlob(normWs, initialHash)
+                try {
+                    targetFile.parentFile?.mkdirs()
+                    targetFile.writeText(baselineContent, Charsets.UTF_8)
+                    restoredFiles.add(relPath)
+                } catch (_: Exception) {}
+            }
+        }
+
+        changesByWorkspace[normWs]?.clear()
+        cp.files.clear()
+        cp.files.putAll(cp.initialSnapshots.filterValues { it.isNotEmpty() })
+
+        persistCheckpoint(normWs)
+        persistStaging(normWs)
+        notifyChange(normWs, "")
+        return restoredFiles
+    }
+
+    fun getReviewStatus(workspace: String, path: String? = null, changeId: String? = null): ReviewStatusResult {
+        val normWs = normalizeWorkspace(workspace)
+        val cs = resolveTargetChangeSet(changeId, normWs, path)
+        if (cs == null) {
+            val wsChanges = changesByWorkspace[normWs]?.values?.toList() ?: emptyList()
+            if (wsChanges.isEmpty()) {
+                return ReviewStatusResult(
+                    workspace = normWs,
+                    status = "idle",
+                    totalHunks = 0,
+                    pendingHunks = 0,
+                    acceptedHunks = 0,
+                    rejectedHunks = 0
+                )
+            }
+            val totalPending = wsChanges.sumOf { it.hunks.count { h -> h.decision == "pending" } }
+            return ReviewStatusResult(
+                workspace = normWs,
+                status = if (totalPending > 0) "pending" else "applied",
+                totalHunks = wsChanges.sumOf { it.hunks.size },
+                pendingHunks = totalPending,
+                acceptedHunks = wsChanges.sumOf { it.hunks.count { h -> h.decision == "accepted" } },
+                rejectedHunks = wsChanges.sumOf { it.hunks.count { h -> h.decision == "rejected" } }
+            )
+        }
+
+        val pending = cs.hunks.count { it.decision == "pending" }
+        val accepted = cs.hunks.count { it.decision == "accepted" }
+        val rejected = cs.hunks.count { it.decision == "rejected" }
+        return ReviewStatusResult(
+            workspace = normWs,
+            path = cs.path,
+            changeId = cs.id,
+            status = cs.status,
+            totalHunks = cs.hunks.size,
+            pendingHunks = pending,
+            acceptedHunks = accepted,
+            rejectedHunks = rejected
+        )
     }
 
     fun clearCheckpoint(workspace: String): Boolean {
         val normWs = normalizeWorkspace(workspace)
         checkpoints.remove(normWs)
         changesByWorkspace[normWs]?.clear()
+
+        persistCheckpoint(normWs)
+        persistStaging(normWs)
         notifyChange(normWs, "")
         return true
     }
@@ -338,10 +442,16 @@ class ChangeStore {
         }
     }
 
-    private fun getBaselinesDir(workspace: String): File {
+    private fun getWorkspaceDir(workspace: String): File {
         val home = System.getProperty("user.home") ?: "."
         val wsHash = sha256(workspace).take(16)
-        val dir = Paths.get(home, ".review-hub", "workspaces", wsHash, "baselines").toFile()
+        val dir = Paths.get(home, ".review-hub", "workspaces", wsHash).toFile()
+        dir.mkdirs()
+        return dir
+    }
+
+    private fun getBaselinesDir(workspace: String): File {
+        val dir = File(getWorkspaceDir(workspace), "baselines")
         dir.mkdirs()
         return dir
     }
@@ -364,6 +474,75 @@ class ChangeStore {
         }
     }
 
+    private fun persistStaging(workspace: String) {
+        val normWs = normalizeWorkspace(workspace)
+        val dir = getWorkspaceDir(normWs)
+        val stagingFile = File(dir, "staging.json")
+        val wsChanges = changesByWorkspace[normWs]?.values?.toList() ?: emptyList()
+
+        if (wsChanges.isEmpty()) {
+            if (stagingFile.exists()) {
+                try { stagingFile.delete() } catch (_: Exception) {}
+            }
+        } else {
+            try {
+                dir.mkdirs()
+                stagingFile.writeText(json.encodeToString(wsChanges), Charsets.UTF_8)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun persistCheckpoint(workspace: String) {
+        val normWs = normalizeWorkspace(workspace)
+        val dir = getWorkspaceDir(normWs)
+        val cpFile = File(dir, "checkpoint.json")
+        val cp = checkpoints[normWs]
+
+        if (cp == null) {
+            if (cpFile.exists()) {
+                try { cpFile.delete() } catch (_: Exception) {}
+            }
+        } else {
+            try {
+                dir.mkdirs()
+                cpFile.writeText(json.encodeToString(cp), Charsets.UTF_8)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun loadPersistedState() {
+        val home = System.getProperty("user.home") ?: return
+        val root = Paths.get(home, ".review-hub", "workspaces").toFile()
+        if (!root.exists() || !root.isDirectory) return
+
+        val wsFolders = root.listFiles() ?: return
+        for (folder in wsFolders) {
+            if (!folder.isDirectory) continue
+
+            // 1. Load checkpoint
+            val cpFile = File(folder, "checkpoint.json")
+            if (cpFile.exists()) {
+                try {
+                    val cp = json.decodeFromString<CheckpointRecord>(cpFile.readText(Charsets.UTF_8))
+                    checkpoints[cp.workspace] = cp
+                } catch (_: Exception) {}
+            }
+
+            // 2. Load staging changes
+            val stagingFile = File(folder, "staging.json")
+            if (stagingFile.exists()) {
+                try {
+                    val changes = json.decodeFromString<List<ChangeSet>>(stagingFile.readText(Charsets.UTF_8))
+                    for (cs in changes) {
+                        val normWs = normalizeWorkspace(cs.workspace)
+                        val wsMap = changesByWorkspace.computeIfAbsent(normWs) { ConcurrentHashMap() }
+                        wsMap[cs.id] = cs
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
     private fun normalizeWorkspace(path: String): String {
         return PathUtil.normalizeWorkspace(path).replace('\\', '/')
     }
@@ -375,8 +554,10 @@ class ChangeStore {
     }
 }
 
+@Serializable
 data class CheckpointRecord(
     val workspace: String,
     val setAt: Long,
-    val files: MutableMap<String, String> = mutableMapOf()
+    val files: MutableMap<String, String> = mutableMapOf(),
+    val initialSnapshots: MutableMap<String, String> = mutableMapOf()
 )

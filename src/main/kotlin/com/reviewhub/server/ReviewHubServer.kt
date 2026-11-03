@@ -2,6 +2,7 @@ package com.reviewhub.server
 
 import com.reviewhub.core.ChangeStore
 import com.reviewhub.model.*
+import com.reviewhub.util.FuzzyMatchUtil
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
@@ -114,7 +115,6 @@ class ReviewHubServer(
                 val ws = obj["workspace"]?.jsonPrimitive?.content ?: workspacePath ?: ""
                 val path = obj["path"]?.jsonPrimitive?.content ?: ""
                 val content = obj["content"]?.jsonPrimitive?.content ?: ""
-
                 val cs = store.propose(ws, path, content)
                 sendJson(exchange, 200, buildJsonObject {
                     put("changeId", cs.id)
@@ -171,6 +171,26 @@ class ReviewHubServer(
             val ws = obj["workspace"]?.jsonPrimitive?.content ?: workspacePath ?: ""
             val ok = store.clearCheckpoint(ws)
             sendJson(exchange, 200, buildJsonObject { put("ok", ok) })
+        }
+
+        srv.createContext("/checkpoint/rollback") { exchange ->
+            val body = readRequestBody(exchange)
+            val obj = if (body.isNotEmpty()) json.parseToJsonElement(body).jsonObject else JsonObject(emptyMap())
+            val ws = obj["workspace"]?.jsonPrimitive?.content ?: workspacePath ?: ""
+            val files = store.rollbackToCheckpoint(ws)
+            sendJson(exchange, 200, buildJsonObject {
+                put("reverted", files.size)
+                put("files", json.encodeToJsonElement(files))
+            })
+        }
+
+        srv.createContext("/changes/status") { exchange ->
+            val params = parseQueryParams(exchange.requestURI.query)
+            val ws = params["workspace"] ?: workspacePath ?: ""
+            val path = params["path"]
+            val changeId = params["changeId"]
+            val status = store.getReviewStatus(ws, path, changeId)
+            sendJson(exchange, 200, json.encodeToJsonElement(status))
         }
 
         srv.createContext("/checkpoint/info") { exchange ->
@@ -299,20 +319,26 @@ class ReviewHubServer(
                                 mapOf(
                                     "path" to "string",
                                     "old_string" to "string",
-                                    "new_string" to "string"
+                                    "new_string" to "string",
+                                    "replace_all" to "boolean"
                                 ),
                                 listOf("path", "old_string", "new_string")
                             ))
                             add(toolSchema(
                                 "propose_write",
                                 "Propose creating or overwriting a file (staged for review in JetBrains IDE).",
-                                mapOf("path" to "string", "content" to "string"),
+                                mapOf(
+                                    "path" to "string",
+                                    "content" to "string"
+                                ),
                                 listOf("path", "content")
                             ))
                             add(toolSchema(
                                 "propose_delete",
                                 "Propose deleting a file (staged for review in JetBrains IDE).",
-                                mapOf("path" to "string"),
+                                mapOf(
+                                    "path" to "string"
+                                ),
                                 listOf("path")
                             ))
                             add(toolSchema(
@@ -355,6 +381,18 @@ class ReviewHubServer(
                                 "clear_checkpoint",
                                 "Clear the current checkpoint baseline.",
                                 mapOf("workspace" to "string"),
+                                emptyList()
+                            ))
+                            add(toolSchema(
+                                "rollback_checkpoint",
+                                "Rollback all files in the workspace to the initial checkpoint state, undoing AI changes.",
+                                mapOf("workspace" to "string"),
+                                emptyList()
+                            ))
+                            add(toolSchema(
+                                "get_review_status",
+                                "Check review status of staged changes (e.g. pending, applied, rejected) by file path or change ID.",
+                                mapOf("path" to "string", "changeId" to "string", "workspace" to "string"),
                                 emptyList()
                             ))
                             add(toolSchema(
@@ -408,16 +446,17 @@ class ReviewHubServer(
             "propose_edit" -> {
                 val oldString = args["old_string"]?.jsonPrimitive?.content ?: ""
                 val newString = args["new_string"]?.jsonPrimitive?.content ?: ""
+                val replaceAll = args["replace_all"]?.jsonPrimitive?.booleanOrNull ?: false
                 val currentText = store.readFile(targetWs, targetPath)
 
-                if (oldString.isNotEmpty() && !currentText.contains(oldString)) {
+                val replaced = FuzzyMatchUtil.findAndReplace(currentText, oldString, newString, replaceAll)
+                if (replaced == null) {
                     return json.encodeToString(buildJsonObject {
                         put("status", "error")
                         put("error", "Target old_string not found in file: $targetPath")
                     })
                 }
 
-                val replaced = if (oldString.isEmpty()) newString else currentText.replaceFirst(oldString, newString)
                 val cs = store.propose(targetWs, targetPath, replaced)
                 json.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
@@ -480,6 +519,18 @@ class ReviewHubServer(
             "clear_checkpoint" -> {
                 val ok = store.clearCheckpoint(targetWs)
                 "{\"ok\": $ok}"
+            }
+
+            "rollback_checkpoint" -> {
+                val files = store.rollbackToCheckpoint(targetWs)
+                "{\"status\": \"rolled_back\", \"files_reverted\": ${files.size}}"
+            }
+
+            "get_review_status" -> {
+                val path = args["path"]?.jsonPrimitive?.contentOrNull
+                val changeId = args["changeId"]?.jsonPrimitive?.contentOrNull
+                val status = store.getReviewStatus(targetWs, path, changeId)
+                json.encodeToString(status)
             }
 
             "list_workspaces" -> {
@@ -563,11 +614,10 @@ class ReviewHubServer(
         fun getVersion(): String {
             return try {
                 val pluginId = com.intellij.openapi.extensions.PluginId.getId("com.reviewhub.jetbrains")
-                com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId)?.version ?: "0.1.0"
+                com.intellij.ide.plugins.PluginManager.getInstance().findEnabledPlugin(pluginId)?.version ?: "0.1.0"
             } catch (_: Throwable) {
                 "0.1.0"
             }
         }
     }
 }
-

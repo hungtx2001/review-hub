@@ -4,6 +4,9 @@ import com.reviewhub.model.*
 import com.reviewhub.util.PathUtil
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -194,6 +197,53 @@ class HubClient(
             client.newCall(req).execute().use { it.isSuccessful }
         } catch (_: Exception) {
             false
+        }
+    }
+
+    fun rollbackCheckpoint(workspace: String): List<String> {
+        val map = mapOf("workspace" to workspace.replace('\\', '/'))
+        val bodyStr = json.encodeToString(map)
+        val req = Request.Builder()
+            .url("$baseUrl/checkpoint/rollback")
+            .header("Authorization", "Bearer $token")
+            .post(bodyStr.toRequestBody(jsonMediaType))
+            .build()
+
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return emptyList()
+                val body = resp.body?.string() ?: return emptyList()
+                val elem = json.parseToJsonElement(body)
+                val files = (elem as? JsonObject)?.get("files")
+                (files as? JsonArray)?.mapNotNull {
+                    (it as? JsonPrimitive)?.content
+                } ?: emptyList()
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun getReviewStatus(workspace: String, path: String? = null, changeId: String? = null): ReviewStatusResult? {
+        val encodedWs = URLEncoder.encode(workspace, "UTF-8")
+        var url = "$baseUrl/changes/status?workspace=$encodedWs"
+        if (path != null) url += "&path=" + URLEncoder.encode(path, "UTF-8")
+        if (changeId != null) url += "&changeId=" + URLEncoder.encode(changeId, "UTF-8")
+
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+
+        return try {
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val body = resp.body?.string() ?: return null
+                json.decodeFromString<ReviewStatusResult>(body)
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 }

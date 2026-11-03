@@ -200,8 +200,6 @@ object ReviewHubInlineReview {
             editor.putUserData(STAGED_HASH_KEY, currentHash)
         }
 
-        // Do not clutter editor with top header bar; changed files are listed in Review Hub ToolWindow
-        editor.headerComponent = null
 
         // Clean up previous highlighters and inlays
         val existingHighlighters = editor.getUserData(HIGHLIGHTERS_KEY)
@@ -459,34 +457,16 @@ object ReviewHubInlineReview {
         relPath: String,
         hunkCount: Int
     ): javax.swing.JComponent {
-        val panel = javax.swing.JPanel(BorderLayout())
-        panel.border = javax.swing.border.EmptyBorder(3, 10, 3, 10)
-        panel.background = JBColor(Color(0xF0, 0xF4, 0xF8), Color(0x2B, 0x2D, 0x30))
+        val panel = javax.swing.JPanel(FlowLayout(FlowLayout.LEFT, 6, 2))
+        panel.border = javax.swing.BorderFactory.createCompoundBorder(
+            javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor(Color(0xD0, 0xD7, 0xDE), Color(0x38, 0x3A, 0x42))),
+            javax.swing.BorderFactory.createEmptyBorder(2, 6, 2, 6)
+        )
+        panel.background = JBColor(Color(0xF6, 0xF8, 0xFA), Color(0x2B, 0x2D, 0x30))
 
-        val leftPanel = javax.swing.JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
-        leftPanel.isOpaque = false
-
-        val titleLabel = javax.swing.JLabel("Review Hub: $hunkCount pending")
-        titleLabel.font = titleLabel.font.deriveFont(Font.BOLD)
-        leftPanel.add(titleLabel)
-
-        val prevBtn = javax.swing.JButton("Prev", AllIcons.Actions.MoveUp)
-        prevBtn.isFocusable = false
-        prevBtn.addActionListener { scrollToPrevHunk(editor) }
-        leftPanel.add(prevBtn)
-
-        val nextBtn = javax.swing.JButton("Next", AllIcons.Actions.MoveDown)
-        nextBtn.isFocusable = false
-        nextBtn.addActionListener { scrollToNextHunk(editor) }
-        leftPanel.add(nextBtn)
-
-        panel.add(leftPanel, BorderLayout.WEST)
-
-        val rightPanel = javax.swing.JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
-        rightPanel.isOpaque = false
-
-        val acceptAllBtn = javax.swing.JButton("Accept File", AllIcons.Actions.Checked)
+        val acceptAllBtn = javax.swing.JButton("✓ Accept File", AllIcons.Actions.Checked)
         acceptAllBtn.isFocusable = false
+        acceptAllBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         acceptAllBtn.addActionListener {
             val hubManager = project.getService(HubManager::class.java)
             val client = hubManager.client ?: return@addActionListener
@@ -504,10 +484,11 @@ object ReviewHubInlineReview {
                 }
             }
         }
-        rightPanel.add(acceptAllBtn)
+        panel.add(acceptAllBtn)
 
-        val rejectAllBtn = javax.swing.JButton("Reject File", AllIcons.Actions.Cancel)
+        val rejectAllBtn = javax.swing.JButton("✕ Reject File", AllIcons.Actions.Cancel)
         rejectAllBtn.isFocusable = false
+        rejectAllBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         rejectAllBtn.addActionListener {
             val hubManager = project.getService(HubManager::class.java)
             val client = hubManager.client ?: return@addActionListener
@@ -528,9 +509,20 @@ object ReviewHubInlineReview {
                 }
             }
         }
-        rightPanel.add(rejectAllBtn)
+        panel.add(rejectAllBtn)
 
-        panel.add(rightPanel, BorderLayout.EAST)
+        val nextBtn = javax.swing.JButton("↓ Next Hunk", AllIcons.Actions.MoveDown)
+        nextBtn.isFocusable = false
+        nextBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        nextBtn.addActionListener { scrollToNextHunk(editor) }
+        panel.add(nextBtn)
+
+        val prevBtn = javax.swing.JButton("↑ Prev Hunk", AllIcons.Actions.MoveUp)
+        prevBtn.isFocusable = false
+        prevBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        prevBtn.addActionListener { scrollToPrevHunk(editor) }
+        panel.add(prevBtn)
+
         return panel
     }
 

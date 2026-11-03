@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en" class="dark scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review Hub — Safe AI Code Review for JetBrains IDEs</title>
+  <meta name="description" content="Safely review, tweak, and accept AI-generated code changes right inside IntelliJ IDEA, PyCharm, WebStorm, and all JetBrains IDEs via embedded MCP.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2338bdf8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><path d='m9 15 2 2 4-4'/></svg>">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+            sans: ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    .glow-effect {
+      background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.12) 0%, transparent 60%);
+    }
+  </style>
+</head>
+<body class="bg-[#0f1117] text-slate-200 antialiased selection:bg-sky-500 selection:text-white">
+
+  <!-- Navigation -->
+  <header class="sticky top-0 z-50 backdrop-blur-md bg-[#0f1117]/80 border-b border-slate-800">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+          <i data-lucide="check-check" class="w-5 h-5 text-white"></i>
+        </div>
+        <span class="text-xl font-bold tracking-tight text-white">Review Hub</span>
+      </div>
+
+      <nav class="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-300">
+        <a href="#features" class="hover:text-white transition">Features</a>
+        <a href="#quickstart" class="hover:text-white transition">Quickstart</a>
+      </nav>
+
+      <div>
+        <a href="https://plugins.jetbrains.com/plugin/com.reviewhub.jetbrains" target="_blank" rel="noopener" class="text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 transition inline-flex items-center gap-1.5">
+          <span>Marketplace</span>
+          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="relative pt-16 pb-16 overflow-hidden glow-effect">
+    <div class="max-w-5xl mx-auto px-6 text-center">
+      
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-300 mb-8">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        Embedded MCP Server for JetBrains IDEs
+      </div>
+
+      <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white mb-6 leading-[1.15]">
+        The Safe Review Bridge for <br>
+        <span class="bg-clip-text text-transparent bg-gradient-to-r from-sky-400 via-indigo-300 to-teal-300">
+          Autonomous AI Coding Agents
+        </span>
+      </h1>
+
+      <p class="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+        Stop AI from silently overwriting your files. Review Hub stages AI edits in memory so you can inspect, navigate, and accept changes hunk-by-hunk directly inside your IDE.
+      </p>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
+        <a href="https://plugins.jetbrains.com/plugin/com.reviewhub.jetbrains" target="_blank" rel="noopener" class="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-xl shadow-sky-500/20 transition flex items-center justify-center gap-2">
+          <i data-lucide="puzzle" class="w-5 h-5"></i>
+          <span>Get on JetBrains Marketplace</span>
+        </a>
+        <a href="#quickstart" class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-200 transition flex items-center justify-center gap-2">
+          <i data-lucide="terminal" class="w-4 h-4 text-sky-400"></i>
+          Quickstart Guide
+        </a>
+      </div>
+
+      <!-- IDE Preview Window Mockup -->
+      <div class="relative max-w-4xl mx-auto rounded-2xl bg-[#1e1f22] border border-slate-800 shadow-2xl shadow-black/80 overflow-hidden text-left">
+        <!-- Title bar -->
+        <div class="bg-[#2b2d30] px-4 py-3 flex items-center justify-between border-b border-slate-800 select-none">
+          <div class="flex items-center space-x-2">
+            <div class="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
+            <div class="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
+            <div class="w-3 h-3 rounded-full bg-[#27c93f]"></div>
+            <span class="text-xs font-mono text-slate-400 ml-3">OrderService.kt — IntelliJ IDEA</span>
+          </div>
+          <span class="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            Review Hub Active
+          </span>
+        </div>
+
+        <!-- Floating Editor Action Bar -->
+        <div class="bg-[#21262d] px-4 py-2 border-b border-slate-800 flex items-center gap-2">
+          <button class="px-2.5 py-1 text-xs font-medium rounded bg-emerald-600 text-white flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i> Accept File
+          </button>
+          <button class="px-2.5 py-1 text-xs font-medium rounded bg-rose-600/90 text-white flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i> Reject File
+          </button>
+          <button class="px-2.5 py-1 text-xs font-medium rounded bg-slate-700 text-slate-200 flex items-center gap-1 hover:bg-slate-600">
+            <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i> Next Hunk
+          </button>
+          <button class="px-2.5 py-1 text-xs font-medium rounded bg-slate-700 text-slate-200 flex items-center gap-1 hover:bg-slate-600">
+            <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i> Prev Hunk
+          </button>
+        </div>
+
+        <!-- Code Content with Inlay Diff -->
+        <div class="p-6 font-mono text-xs sm:text-sm leading-relaxed overflow-x-auto bg-[#1e1f22]">
+          <div class="text-slate-500">// File: src/main/kotlin/OrderService.kt</div>
+          <div class="text-slate-300">class OrderService(private val repo: OrderRepository) {</div>
+          <div class="text-slate-300 pl-4">fun processPayment(orderId: String, amount: Double): Boolean {</div>
+          
+          <!-- Inlay Header -->
+          <div class="my-2 pl-8 flex items-center gap-3 text-xs font-mono py-1">
+            <span class="text-emerald-400 font-semibold cursor-pointer hover:underline flex items-center gap-1">✓Accept</span>
+            <span class="text-slate-600">|</span>
+            <span class="text-rose-400 font-semibold cursor-pointer hover:underline flex items-center gap-1">✕Reject</span>
+          </div>
+
+          <!-- Red Line (Deleted) -->
+          <div class="bg-[#4c1c24] text-rose-300 pl-8 py-0.5 border-l-4 border-rose-500/70">
+            - val success = paymentGateway.charge(orderId, amount)
+          </div>
+
+          <!-- Green Line (Added) -->
+          <div class="bg-[#1f3e24] text-emerald-300 pl-8 py-0.5 border-l-4 border-emerald-500">
+            + val success = paymentGateway.chargeWithRetry(orderId, amount, maxRetries = 3)
+          </div>
+
+          <div class="text-slate-300 pl-8">return success</div>
+          <div class="text-slate-300 pl-4">}</div>
+          <div class="text-slate-300">}</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Features Grid -->
+  <section id="features" class="py-20 border-t border-slate-800 bg-[#0b0d13]">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="text-center max-w-2xl mx-auto mb-14">
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">Engineered for Safety & Developer Speed</h2>
+        <p class="text-sm sm:text-base text-slate-400">Review AI changes natively without corrupted git working trees or broken builds.</p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        <!-- Feature 1 -->
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+          <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 mb-4">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-base font-bold text-white mb-1.5">In-Memory Staging</h3>
+          <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            AI edits stage safely via port 49182. Your disk and build stay completely untouched until you accept.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+          <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4">
+            <i data-lucide="split" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-base font-bold text-white mb-1.5">In-Editor Inline Diff</h3>
+          <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            Hunks display with syntax highlighting, gutter markers, and single-click <code class="text-xs text-emerald-400">✓Accept | ✕Reject</code> inlays.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+          <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4">
+            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-base font-bold text-white mb-1.5">One-Click Rollback</h3>
+          <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            Automatic checkpoint snapshots let you revert an entire AI session back to baseline with peace of mind.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition">
+          <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4">
+            <i data-lucide="zap" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-base font-bold text-white mb-1.5">Universal MCP Bridge</h3>
+          <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            Works out of the box with Claude Code, Antigravity, OpenCode, Aider, Cursor, and Cline via Model Context Protocol.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart Section (Unified 2-Step Setup) -->
+  <section id="quickstart" class="py-20 border-t border-slate-800 bg-[#0f1117]">
+    <div class="max-w-5xl mx-auto px-6">
+      <div class="text-center mb-14">
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">Get Started in 2 Steps</h2>
+        <p class="text-slate-400 text-sm sm:text-base">Connect your JetBrains IDE to any AI coding assistant in seconds.</p>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-8 items-stretch">
+        
+        <!-- Step 1: Install Plugin -->
+        <div class="p-6 rounded-2xl bg-slate-900/70 border border-slate-800 flex flex-col justify-between h-full">
+          <div>
+            <div class="flex items-center gap-3 mb-4">
+              <span class="w-7 h-7 rounded-full bg-sky-500/10 text-sky-400 font-mono text-xs font-bold flex items-center justify-center border border-sky-500/30">1</span>
+              <h3 class="text-base font-bold text-white">Install Review Hub in IDE</h3>
+            </div>
+            <p class="text-sm text-slate-400 mb-3 leading-relaxed">
+              Open your JetBrains IDE and install directly from the Marketplace:
+            </p>
+            <div class="bg-black/60 p-4 rounded-xl text-xs font-mono text-slate-300 leading-relaxed border border-slate-800 space-y-2">
+              <div class="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800/80">
+                <span>Shortcut</span>
+                <span class="text-slate-200 bg-slate-800 px-2 py-0.5 rounded">Ctrl+Alt+S / ⌘,</span>
+              </div>
+              <div class="flex items-center gap-2 pt-1 text-slate-300">
+                <span class="text-sky-400 font-semibold">1.</span> Plugins &rarr; Marketplace tab
+              </div>
+              <div class="flex items-center gap-2 text-slate-300">
+                <span class="text-sky-400 font-semibold">2.</span> Search <span class="text-emerald-400 font-semibold">"Review Hub"</span>
+              </div>
+              <div class="flex items-center gap-2 text-slate-300">
+                <span class="text-sky-400 font-semibold">3.</span> Click <span class="text-sky-400 font-semibold">Install</span> &bull; No restart needed
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 flex items-center gap-2 text-xs text-slate-400 border-t border-slate-800/80">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Embedded MCP starts automatically on port 49182</span>
+          </div>
+        </div>
+
+        <!-- Step 2: Configure AI CLI -->
+        <div class="p-6 rounded-2xl bg-slate-900/70 border border-slate-800 flex flex-col justify-between h-full">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <span class="w-7 h-7 rounded-full bg-emerald-500/10 text-emerald-400 font-mono text-xs font-bold flex items-center justify-center border border-emerald-500/30">2</span>
+                <h3 class="text-base font-bold text-white">Connect AI Agent (MCP)</h3>
+              </div>
+              <button id="copyBtn" onclick="copyConfig()" class="text-xs font-semibold px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 transition flex items-center gap-1.5">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy JSON
+              </button>
+            </div>
+            <p class="text-sm text-slate-400 mb-3">
+              Add to your agent's config (<code class="text-xs text-slate-300">claude.json</code>, <code class="text-xs text-slate-300">cline_mcp_settings.json</code>):
+            </p>
+            <pre class="bg-black/60 p-4 rounded-xl text-xs text-slate-300 font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{
+  <span class="text-sky-400">"mcpServers"</span>: {
+    <span class="text-sky-400">"review-hub"</span>: {
+      <span class="text-sky-400">"url"</span>: <span class="text-emerald-400">"http://127.0.0.1:49182/sse"</span>
+    }
+  }
+}</pre>
+          </div>
+          <div class="mt-4 pt-3 flex items-center gap-2 text-xs text-slate-400 border-t border-slate-800/80">
+            <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>Works with Claude Code, Antigravity, Aider, Cline &amp; Roo</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800 py-8 bg-[#090a0f] text-center text-xs text-slate-500">
+    <div class="max-w-5xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div>Review Hub &bull; Safe AI Code Review for JetBrains IDEs. Apache 2.0 License.</div>
+      <div class="flex items-center space-x-6">
+        <a href="#features" class="hover:text-slate-400">Features</a>
+        <a href="#quickstart" class="hover:text-slate-400">Quickstart</a>
+        <a href="https://plugins.jetbrains.com/plugin/com.reviewhub.jetbrains" target="_blank" rel="noopener" class="hover:text-slate-400">Marketplace</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+
+    function copyConfig() {
+      const configText = JSON.stringify({
+        mcpServers: {
+          "review-hub": {
+            "url": "http://127.0.0.1:49182/sse"
+          }
+        }
+      }, null, 2);
+
+      navigator.clipboard.writeText(configText).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> Copied!';
+        lucide.createIcons();
+        setTimeout(() => {
+          btn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy JSON';
+          lucide.createIcons();
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

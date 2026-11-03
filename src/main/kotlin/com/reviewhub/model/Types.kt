@@ -89,3 +89,15 @@ data class CheckpointInfo(
     val workspace: String,
     val setAt: Long
 )
+
+@Serializable
+data class ReviewStatusResult(
+    val workspace: String,
+    val path: String? = null,
+    val changeId: String? = null,
+    val status: String,
+    val totalHunks: Int = 0,
+    val pendingHunks: Int = 0,
+    val acceptedHunks: Int = 0,
+    val rejectedHunks: Int = 0
+)

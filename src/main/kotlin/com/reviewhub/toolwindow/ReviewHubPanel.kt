@@ -93,6 +93,8 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                         append("-${value.removed}", RED_ATTR)
                     }
                 }
+
+                toolTipText = "${value.path} (+${value.added} -${value.removed})"
             }
         }
 
@@ -136,7 +138,8 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         }
 
         // New file that does not exist on disk yet:
-        // Materialize it on disk with proposed content so it opens as a real file
+        // Materialize it on disk with proposed content so it opens in the editor
+        // with the in-editor inline review format (✓Accept | ✗Reject, gutters, line highlights).
         ApplicationManager.getApplication().executeOnPooledThread {
             val client = hubManager.client ?: return@executeOnPooledThread
             val content = client.getChange(item.id, basePath)?.proposed ?: ""
@@ -207,6 +210,9 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                     val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
                     if (vf != null && vf.isValid) {
                         ReviewHubInlineReview.clearFileReview(project, vf)
+                        if (!file.exists()) {
+                            FileEditorManager.getInstance(project).closeFile(vf)
+                        }
                     }
                     VirtualFileManager.getInstance().asyncRefresh(null)
                 }
@@ -272,6 +278,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
         val am = ActionManager.getInstance()
         listOf(
+            "ReviewHub.RollbackCheckpoint",
             "ReviewHub.CopyMcpConfig",
             "ReviewHub.CopyAgentRules",
             "ReviewHub.RegisterMcp",

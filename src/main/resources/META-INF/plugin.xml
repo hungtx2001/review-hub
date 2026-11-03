@@ -35,6 +35,8 @@
 
         <fileStatusProvider implementation="com.reviewhub.status.ReviewHubFileStatusProvider"/>
         <projectViewNodeDecorator implementation="com.reviewhub.status.ReviewHubNodeDecorator"/>
+        <statusBarWidgetFactory id="ReviewHubStatusBarWidget"
+                                implementation="com.reviewhub.status.ReviewHubStatusBarWidgetFactory"/>
     </extensions>
 
     <projectListeners>
@@ -63,11 +65,16 @@
                 text="Set Checkpoint"
                 description="Accept current disk state as baseline"
                 icon="AllIcons.Actions.Commit"/>
+        <action id="ReviewHub.RollbackCheckpoint"
+                class="com.reviewhub.actions.RollbackCheckpointAction"
+                text="Rollback to Checkpoint"
+                description="Revert all files to the initial checkpoint state, undoing AI edits"
+                icon="AllIcons.Actions.Rollback"/>
         <action id="ReviewHub.ClearCheckpoint"
                 class="com.reviewhub.actions.ClearCheckpointAction"
                 text="Clear Checkpoint"
                 description="Clear current checkpoint baseline"
-                icon="AllIcons.Actions.Rollback"/>
+                icon="AllIcons.Actions.GC"/>
         <action id="ReviewHub.AcceptAll"
                 class="com.reviewhub.actions.AcceptAllAction"
                 text="Accept All Changes"
@@ -108,6 +115,7 @@
             <reference ref="ReviewHub.AcceptAll"/>
             <reference ref="ReviewHub.RejectAll"/>
             <separator/>
+            <reference ref="ReviewHub.RollbackCheckpoint"/>
             <reference ref="ReviewHub.SetCheckpoint"/>
             <reference ref="ReviewHub.ClearCheckpoint"/>
             <separator/>
@@ -120,6 +128,7 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <reference ref="ReviewHub.RegisterMcp"/>
             <separator/>
+            <reference ref="ReviewHub.RollbackCheckpoint"/>
             <reference ref="ReviewHub.SetCheckpoint"/>
             <reference ref="ReviewHub.ClearCheckpoint"/>
             <separator/>
