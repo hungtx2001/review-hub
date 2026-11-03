@@ -81,8 +81,8 @@
                 description="Copy instruction rules for AI Tools (CLAUDE.md, .cursorrules, .clinerules, AGENTS.md)"/>
         <action id="ReviewHub.RegisterMcp"
                 class="com.reviewhub.actions.RegisterMcpAction"
-                text="Register MCP in AI Tools"
-                description="Auto-register review-hub-mcp into Claude Code, Cline, Roo Code"/>
+                text="Configure AI Tools (MCP)..."
+                description="Scan and configure Review Hub MCP for AI CLIs (Codex, Claude Code, Cursor, Windsurf, OpenCode, Cline, Roo Code)"/>
         <action id="ReviewHub.OpenWebsite"
                 class="com.reviewhub.actions.OpenWebsiteAction"
                 text="Open Website &amp; Docs"
@@ -96,9 +96,9 @@
         <!-- Streamlined, clean daily ToolWindow toolbar -->
         
         <group id="ReviewHub.MoreGroup" text="More Options" icon="AllIcons.Actions.More" popup="true">
+            <reference ref="ReviewHub.RegisterMcp"/>
             <reference ref="ReviewHub.CopyMcpConfig"/>
             <reference ref="ReviewHub.CopyAgentRules"/>
-            <reference ref="ReviewHub.RegisterMcp"/>
             <separator/>
             <reference ref="ReviewHub.OpenWebsite"/>
         </group>
@@ -117,6 +117,8 @@
 
         <group id="ReviewHub.ToolsMenu" text="Review Hub" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <reference ref="ReviewHub.RegisterMcp"/>
+            <separator/>
             <reference ref="ReviewHub.SetCheckpoint"/>
             <reference ref="ReviewHub.ClearCheckpoint"/>
             <separator/>
@@ -125,7 +127,6 @@
             <separator/>
             <reference ref="ReviewHub.CopyMcpConfig"/>
             <reference ref="ReviewHub.CopyAgentRules"/>
-            <reference ref="ReviewHub.RegisterMcp"/>
             <separator/>
             <reference ref="ReviewHub.OpenWebsite"/>
             <reference ref="ReviewHub.Refresh"/>

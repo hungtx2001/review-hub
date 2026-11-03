@@ -9,3 +9,4 @@ mcp/bin/
 .gradle/
 jetbrains/build/
 jetbrains/.intellijPlatform/
+.kotlin/
