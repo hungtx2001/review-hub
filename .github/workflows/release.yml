@@ -150,12 +150,10 @@ jobs:
           fi
 
           # 3. JetBrains Plugin Check (so sánh với Git tag gần nhất)
-          LOCAL_JB_VER=$(grep "pluginVersion" jetbrains/gradle.properties | cut -d'=' -f2 | tr -d ' 
-')
+          LOCAL_JB_VER=$(grep "pluginVersion" jetbrains/gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
-            PREV_JB_VER=$(git show "$PREV_TAG:jetbrains/gradle.properties" 2>/dev/null | grep "pluginVersion" | cut -d'=' -f2 | tr -d ' 
-' || echo "none")
+            PREV_JB_VER=$(git show "$PREV_TAG:jetbrains/gradle.properties" 2>/dev/null | grep "pluginVersion" | cut -d'=' -f2 | tr -d '[:space:]' || echo "none")
           else
             PREV_JB_VER="none"
           fi
