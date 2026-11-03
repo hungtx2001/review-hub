@@ -1,19 +1,26 @@
 <idea-plugin>
     <id>com.reviewhub.jetbrains</id>
-    <name>Review Hub (Antigravity Edition)</name>
-    <vendor url="https://github.com/TongDuyDat/hub-preview">Tong Duy Dat, Trinh Xuan Hung</vendor>
+    <name>Review Hub</name>
+    <vendor url="https://github.com/hungtx2001/review-hub">Tong Duy Dat, Trinh Xuan Hung</vendor>
 
     <description><![CDATA[
         <h2>Review Hub for JetBrains IDEs</h2>
-        <p>Always see what AI coding agents changed in your project, and accept or reject individual changes.</p>
-        <p>Works with Claude Code, opencode, dsh, Cline, Roo via MCP, and catches direct writes too.</p>
+        <p>Always see what AI coding agents changed in your project, and accept or reject individual hunks.</p>
+        <p>Works with Claude Code, OpenAI Codex, Cursor, Windsurf, OpenCode, Cline, Roo via native embedded MCP server (SSE).</p>
+
+        <p><img src="https://raw.githubusercontent.com/hungtx2001/review-hub/main/docs/images/panel-overview.png" alt="Review Hub ToolWindow" width="650"/></p>
+
+        <h3>Key Features</h3>
         <ul>
-            <li><b>Decide-to-disk:</b> Changes are staged before being written to disk.</li>
-            <li><b>Granular review:</b> Accept or reject individual diff changes.</li>
-            <li><b>Native JetBrains Diff:</b> High-performance side-by-side or unified diff viewing.</li>
-            <li><b>Project View Indicators:</b> Visual badges for files with pending reviews.</li>
-            <li><b>Inline Antigravity Review:</b> In-editor Accept/Reject with smooth file navigation.</li>
+            <li><b>Native Embedded MCP Server:</b> Runs locally on port 49182 (SSE) as soon as you open the IDE. No Node.js runtime or npm install needed!</li>
+            <li><b>Decide-to-Disk:</b> AI edits are staged safely in memory before touching your files on disk.</li>
+            <li><b>Granular Hunk Review:</b> Accept or reject individual diff hunks with one click.</li>
+            <li><b>In-Editor Inlay Annotations:</b> Visual badges and inline diffs right inside your active editor tabs.</li>
+            <li><b>Native IntelliJ Diff:</b> Side-by-side and unified diff viewing powered by JetBrains Diff Framework.</li>
+            <li><b>Project View Indicators:</b> Clear status badges on modified files in your Project Tree.</li>
         </ul>
+
+        <p><img src="https://raw.githubusercontent.com/hungtx2001/review-hub/main/docs/images/inline-diff.png" alt="Inline Diff Annotations" width="650"/></p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

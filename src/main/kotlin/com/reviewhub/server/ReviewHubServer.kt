@@ -71,7 +71,7 @@ class ReviewHubServer(
         srv.createContext("/healthz") { exchange ->
             sendJson(exchange, 200, buildJsonObject {
                 put("ok", true)
-                put("version", "0.3.3")
+                put("version", getVersion())
                 put("port", port)
             })
         }
@@ -273,7 +273,7 @@ class ReviewHubServer(
                         }
                         putJsonObject("serverInfo") {
                             put("name", "review-hub")
-                            put("version", "0.3.3")
+                            put("version", getVersion())
                         }
                     }
                 }
@@ -557,6 +557,17 @@ class ReviewHubServer(
             }
         }
         return map
+    }
+
+    companion object {
+        fun getVersion(): String {
+            return try {
+                val pluginId = com.intellij.openapi.extensions.PluginId.getId("com.reviewhub.jetbrains")
+                com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId)?.version ?: "0.1.0"
+            } catch (_: Throwable) {
+                "0.1.0"
+            }
+        }
     }
 }
 

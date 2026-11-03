@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.reviewhub"
-version = providers.gradleProperty("pluginVersion").getOrElse("0.3.3")
+version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
 
 repositories {
     mavenCentral()
@@ -32,11 +32,7 @@ intellijPlatform {
     pluginConfiguration {
         id = "com.reviewhub.jetbrains"
         name = "Review Hub"
-        version = providers.gradleProperty("pluginVersion").getOrElse("0.3.3")
-        description = """
-            Always see what AI coding agents changed in your project, and accept or reject individual hunks.
-            Works with Claude Code, OpenAI Codex, Cursor, Windsurf, OpenCode, Cline, Roo via native embedded MCP server.
-        """.trimIndent()
+        version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
         vendor {
             name = "Tong Duy Dat, Trinh Xuan Hung"
         }
