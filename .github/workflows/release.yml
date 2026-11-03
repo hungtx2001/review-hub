@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag/Release version (leave empty to use package.json version)'
+        description: 'Tag/Release version (leave empty to use gradle.properties version)'
         required: false
         default: ''
       draft:
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build & Release Extension, Plugin, and MCP
+    name: Build & Release JetBrains Plugin
     runs-on: ubuntu-latest
 
     steps:
@@ -34,12 +34,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
 
       - name: Setup Java 21 (Temurin)
         uses: actions/setup-java@v4
@@ -54,7 +48,7 @@ jobs:
         id: meta
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(grep "pluginVersion" gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag_name }}" ]; then
             echo "release_tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
@@ -64,37 +58,20 @@ jobs:
             echo "release_tag=v$VERSION" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install Node dependencies
-        run: npm ci
-
-      - name: Build All Bundles (Core, MCP, VS Code)
-        run: npm run build
-
-      - name: Typecheck & Test
+      - name: Run Tests
         run: |
-          npm run typecheck
-          npm test
-
-      - name: Package VS Code Extension (.vsix)
-        run: npm run package:vscode
+          chmod +x gradlew
+          ./gradlew test
 
       - name: Package JetBrains Plugin (.zip)
         run: |
-          chmod +x jetbrains/gradlew
-          cd jetbrains && ./gradlew buildPlugin
-
-      - name: Package MCP Tarball (.tgz)
-        run: |
-          cd mcp && npm pack
+          ./gradlew buildPlugin
 
       - name: Upload Artifacts to Actions Run
         uses: actions/upload-artifact@v4
         with:
-          name: review-hub-artifacts
-          path: |
-            vscode/*.vsix
-            jetbrains/build/distributions/*.zip
-            mcp/*.tgz
+          name: review-hub-plugin
+          path: build/distributions/*.zip
 
       - name: Create or Update GitHub Release
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
@@ -106,54 +83,25 @@ jobs:
           prerelease: ${{ github.event.inputs.prerelease || false }}
           make_latest: true
           generate_release_notes: true
-          files: |
-            vscode/*.vsix
-            jetbrains/build/distributions/*.zip
-            mcp/*.tgz
+          files: build/distributions/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # =========================================================================
-      # Version Check: Kiểm tra từng thành phần độc lập trước khi publish
-      # Chỉ publish thành phần nào thực sự có version mới trên Registry/Marketplace
+      # Version Check: Kiểm tra phiên bản plugin so với git tag trước đó
       # =========================================================================
-      - name: Check Component Versions for Publishing
+      - name: Check JetBrains Plugin Version for Publishing
         id: check_versions
         shell: bash
         run: |
           echo "======================================================="
-          echo "Checking versions of MCP, VS Code, and JetBrains..."
+          echo "Checking JetBrains plugin version..."
           echo "======================================================="
 
-          # 1. MCP Server Check (so sánh với npm registry)
-          LOCAL_MCP_VER=$(node -p "require('./mcp/package.json').version")
-          REMOTE_MCP_VER=$(npm view review-hub-mcp version 2>/dev/null || echo "none")
-          echo "MCP: local=$LOCAL_MCP_VER | npm=$REMOTE_MCP_VER"
-          if [ "$LOCAL_MCP_VER" != "$REMOTE_MCP_VER" ]; then
-            echo "publish_mcp=true" >> $GITHUB_OUTPUT
-            echo "-> [YES] MCP Server version is new. Will publish to npm."
-          else
-            echo "publish_mcp=false" >> $GITHUB_OUTPUT
-            echo "-> [SKIP] MCP Server version $LOCAL_MCP_VER already exists on npm."
-          fi
-
-          # 2. VS Code Extension Check (so sánh với VS Code Marketplace)
-          LOCAL_VSCODE_VER=$(node -p "require('./vscode/package.json').version")
-          REMOTE_VSCODE_VER=$(npx --yes @vscode/vsce show review-hub.review-hub-vscode --json 2>/dev/null | node -p "try { const d = JSON.parse(require('fs').readFileSync(0, 'utf-8')); d.versions[0].version } catch { 'none' }" 2>/dev/null || echo "none")
-          echo "VS Code: local=$LOCAL_VSCODE_VER | marketplace=$REMOTE_VSCODE_VER"
-          if [ "$LOCAL_VSCODE_VER" != "$REMOTE_VSCODE_VER" ]; then
-            echo "publish_vscode=true" >> $GITHUB_OUTPUT
-            echo "-> [YES] VS Code Extension version is new. Will publish to Marketplace."
-          else
-            echo "publish_vscode=false" >> $GITHUB_OUTPUT
-            echo "-> [SKIP] VS Code Extension version $LOCAL_VSCODE_VER already on Marketplace."
-          fi
-
-          # 3. JetBrains Plugin Check (so sánh với Git tag gần nhất)
-          LOCAL_JB_VER=$(grep "pluginVersion" jetbrains/gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
+          LOCAL_JB_VER=$(grep "pluginVersion" gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
-            PREV_JB_VER=$(git show "$PREV_TAG:jetbrains/gradle.properties" 2>/dev/null | grep "pluginVersion" | cut -d'=' -f2 | tr -d '[:space:]' || echo "none")
+            PREV_JB_VER=$(git show "$PREV_TAG:gradle.properties" 2>/dev/null | grep "pluginVersion" | cut -d'=' -f2 | tr -d '[:space:]' || echo "none")
           else
             PREV_JB_VER="none"
           fi
@@ -167,34 +115,11 @@ jobs:
           fi
 
       # -------------------------------------------------------------------------
-      # 1. Publish MCP Server lên npm
-      # -------------------------------------------------------------------------
-      - name: Publish MCP Server to npm
-        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_mcp == 'true' && env.NPM_TOKEN != ''
-        run: |
-          cd mcp
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          npm publish --access public
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # -------------------------------------------------------------------------
-      # 2. Publish VS Code Extension lên Visual Studio Marketplace
-      # -------------------------------------------------------------------------
-      - name: Publish VS Code Extension to Visual Studio Marketplace
-        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_vscode == 'true' && env.VSCE_PAT != ''
-        run: |
-          npx --yes @vscode/vsce publish --packagePath vscode/*.vsix -p ${{ secrets.VSCE_PAT }}
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      # -------------------------------------------------------------------------
-      # 3. Publish Plugin lên JetBrains Marketplace
+      # Publish Plugin lên JetBrains Marketplace
       # -------------------------------------------------------------------------
       - name: Publish Plugin to JetBrains Marketplace
         if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_jetbrains == 'true' && env.JETBRAINS_TOKEN != ''
         run: |
-          cd jetbrains
           ./gradlew publishPlugin
         env:
           JETBRAINS_TOKEN: ${{ secrets.JETBRAINS_TOKEN }}
