@@ -12,9 +12,11 @@ import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.EditorNotifications
+import com.reviewhub.core.ChangeStore
 import com.reviewhub.inline.ReviewHubInlineReview
 import com.reviewhub.model.ChangeSummary
 import com.reviewhub.model.HubEntry
+import com.reviewhub.server.ReviewHubServer
 import com.reviewhub.util.PathUtil
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -31,6 +33,9 @@ class HubManager(private val project: Project) : Disposable {
         isLenient = true
     }
 
+    val store: ChangeStore = ChangeStore()
+    private var embeddedServer: ReviewHubServer? = null
+
     var client: HubClient? = null
         private set
 
@@ -42,8 +47,45 @@ class HubManager(private val project: Project) : Disposable {
     private var pollingTimer: Timer? = null
 
     init {
-        connect()
+        initEmbeddedServerAndConnect()
+        setupStoreListener()
         startPolling()
+    }
+
+    private fun initEmbeddedServerAndConnect() {
+        // 1. First, check if another Review Hub instance is already running
+        val existingEntry = readHubEntry()
+        if (existingEntry != null) {
+            val candidate = HubClient(existingEntry.url, existingEntry.token)
+            if (candidate.healthCheck()) {
+                client = candidate
+                logger.info("Connected to existing Review Hub server at ${existingEntry.url}")
+                refresh()
+                return
+            }
+        }
+
+        // 2. Start our native embedded Kotlin MCP & HTTP server
+        try {
+            val server = ReviewHubServer(store, preferredPort = 49182, workspacePath = project.basePath)
+            val port = server.start()
+            embeddedServer = server
+            client = HubClient("http://127.0.0.1:$port", server.token)
+            logger.info("Started native embedded Review Hub MCP server on port $port")
+            refresh()
+        } catch (e: Exception) {
+            logger.warn("Failed to start embedded Review Hub server", e)
+        }
+    }
+
+    private fun setupStoreListener() {
+        store.addChangeListener { _, _ ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) {
+                    refresh()
+                }
+            }
+        }
     }
 
     fun addChangeListener(listener: () -> Unit) {
@@ -85,11 +127,15 @@ class HubManager(private val project: Project) : Disposable {
                         refresh()
                     }
                 }
-            }, 1000, 2500)
+            }, 2000, 3000)
         }
     }
 
     fun connect(): Boolean {
+        if (embeddedServer != null && client != null && client!!.healthCheck()) {
+            return true
+        }
+
         val entry = readHubEntry()
         if (entry != null) {
             val candidate = HubClient(entry.url, entry.token)
@@ -101,23 +147,6 @@ class HubManager(private val project: Project) : Disposable {
             }
         }
 
-        // If not running, attempt to spawn standalone hub daemon
-        val spawned = trySpawnHub()
-        if (spawned) {
-            Thread.sleep(1000)
-            val newEntry = readHubEntry()
-            if (newEntry != null) {
-                val candidate = HubClient(newEntry.url, newEntry.token)
-                if (candidate.healthCheck()) {
-                    client = candidate
-                    logger.info("Successfully launched and connected to Review Hub at ${newEntry.url}")
-                    refresh()
-                    return true
-                }
-            }
-        }
-
-        logger.debug("Review Hub server is not running yet.")
         return false
     }
 
@@ -139,8 +168,9 @@ class HubManager(private val project: Project) : Disposable {
                         ProjectView.getInstance(project).refresh()
                         VirtualFileManager.getInstance().asyncRefresh(null)
 
-                        // ToolWindow management: show ToolWindow & update badge
-                        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Review Hub")
+                        // Update tool window badge
+                        val toolWindowManager = ToolWindowManager.getInstance(project)
+                        val toolWindow = toolWindowManager.getToolWindow("Review Hub")
                         if (toolWindow != null) {
                             if (currentPending.isNotEmpty()) {
                                 toolWindow.stripeTitle = "Review Hub (${currentPending.size})"
@@ -170,7 +200,6 @@ class HubManager(private val project: Project) : Disposable {
             }
         } catch (e: Exception) {
             logger.debug("Failed to refresh changes from Review Hub", e)
-            // If connection failed, test health; if dead, reset client to trigger reconnect
             if (!c.healthCheck()) {
                 client = null
                 notifyListeners()
@@ -223,58 +252,12 @@ class HubManager(private val project: Project) : Disposable {
         }
     }
 
-    private fun ensureExtractedHubServer(): File? {
-        val home = System.getProperty("user.home") ?: return null
-        val target = Paths.get(home, ".review-hub", "bin", "hub-server.cjs").toFile()
-        if (target.exists() && target.length() > 0) {
-            return target
-        }
-        val stream = javaClass.getResourceAsStream("/server/hub-server.cjs") ?: return null
-        return try {
-            target.parentFile?.mkdirs()
-            target.outputStream().use { out ->
-                stream.copyTo(out)
-            }
-            target
-        } catch (e: Exception) {
-            logger.warn("Could not extract bundled hub-server.cjs", e)
-            null
-        }
-    }
-
-    private fun trySpawnHub(): Boolean {
-        val workspace = project.basePath ?: return false
-        val home = System.getProperty("user.home")
-
-        val extracted = ensureExtractedHubServer()
-
-        val candidates = listOfNotNull(
-            extracted,
-            File(workspace, "dist/hub-server.cjs"),
-            File(workspace, "../dist/hub-server.cjs"),
-            File(workspace, "../hub-preview/dist/hub-server.cjs"),
-            home?.let { File(it, ".review-hub/bin/hub-server.cjs") },
-            home?.let { File(it, ".review-hub/dist/hub-server.cjs") },
-            home?.let { File(it, ".review-hub/hub-server.cjs") }
-        )
-
-        val targetScript = candidates.firstOrNull { it.exists() } ?: return false
-
-        return try {
-            val pb = ProcessBuilder("node", targetScript.absolutePath, workspace)
-            pb.directory(File(workspace))
-            pb.redirectErrorStream(true)
-            pb.start()
-            true
-        } catch (e: Exception) {
-            logger.warn("Failed to spawn node hub-server.cjs", e)
-            false
-        }
-    }
-
     override fun dispose() {
         pollingTimer?.cancel()
         pollingTimer = null
         listeners.clear()
+        embeddedServer?.stop()
+        embeddedServer = null
+        client = null
     }
 }

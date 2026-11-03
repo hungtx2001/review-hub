@@ -40,7 +40,7 @@ class AiToolConfigTest {
 
         val updatedToml = tomlFile.readText()
         assertTrue(updatedToml.contains("""[mcp.servers."review-hub"]"""))
-        assertTrue(updatedToml.contains("review-hub-mcp"))
+        assertTrue(updatedToml.contains("49182/sse"))
         assertTrue(updatedToml.contains("some_other_section")) // Preserved existing
 
         // Check scanner recognizes it

@@ -115,11 +115,11 @@ class ConfigureMcpDialog(private val project: Project?) : DialogWrapper(project,
             Messages.showInfoMessage(project, "Review Hub TOML MCP config copied to clipboard!", "Review Hub MCP")
         }
 
-        val copyCliBtn = JButton("Copy CLI Command", AllIcons.Actions.Copy)
-        copyCliBtn.toolTipText = "Copy npx -y review-hub-mcp command"
+        val copyCliBtn = JButton("Copy SSE URL", AllIcons.Actions.Copy)
+        copyCliBtn.toolTipText = "Copy MCP SSE endpoint URL (http://127.0.0.1:49182/sse)"
         copyCliBtn.addActionListener {
-            CopyPasteManager.getInstance().setContents(StringSelection(AiToolConfigManager.MCP_CLI_COMMAND))
-            Messages.showInfoMessage(project, "MCP CLI command copied: ${AiToolConfigManager.MCP_CLI_COMMAND}", "Review Hub MCP")
+            CopyPasteManager.getInstance().setContents(StringSelection(AiToolConfigManager.MCP_SSE_URL))
+            Messages.showInfoMessage(project, "MCP SSE URL copied: ${AiToolConfigManager.MCP_SSE_URL}", "Review Hub MCP")
         }
 
         quickCopyPanel.add(copyJsonBtn)

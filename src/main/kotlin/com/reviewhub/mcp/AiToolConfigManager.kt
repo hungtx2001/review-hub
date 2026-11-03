@@ -15,20 +15,19 @@ data class ConfigurationResult(
 object AiToolConfigManager {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    const val MCP_CLI_COMMAND = "npx -y review-hub-mcp"
+    const val DEFAULT_PORT = 49182
+    const val MCP_SSE_URL = "http://127.0.0.1:$DEFAULT_PORT/sse"
 
     const val MCP_JSON_SNIPPET = """{
   "mcpServers": {
     "review-hub": {
-      "command": "npx",
-      "args": ["-y", "review-hub-mcp"]
+      "url": "http://127.0.0.1:49182/sse"
     }
   }
 }"""
 
     const val MCP_TOML_SNIPPET = """[mcp.servers."review-hub"]
-command = "npx"
-args = ["-y", "review-hub-mcp"]"""
+url = "http://127.0.0.1:49182/sse""""
 
     const val AGENT_RULES_CONTENT = """<!-- review-hub:start -->
 ## Review Hub (required)
@@ -162,12 +161,8 @@ Only fall back to the built-in tools if a Review Hub tool returns an error sayin
         val mcpServers = (rootObj["mcpServers"]?.jsonObject ?: JsonObject(emptyMap())).toMutableMap()
 
         mcpServers["review-hub"] = buildJsonObject {
-            put("type", "stdio")
-            put("command", "npx")
-            putJsonArray("args") {
-                add("-y")
-                add("review-hub-mcp")
-            }
+            put("type", "sse")
+            put("url", MCP_SSE_URL)
         }
 
         val updatedRoot = rootObj.toMutableMap()
@@ -181,11 +176,7 @@ Only fall back to the built-in tools if a Review Hub tool returns an error sayin
         val mcpServers = (rootObj["mcpServers"]?.jsonObject ?: JsonObject(emptyMap())).toMutableMap()
 
         mcpServers["review-hub"] = buildJsonObject {
-            put("command", "npx")
-            putJsonArray("args") {
-                add("-y")
-                add("review-hub-mcp")
-            }
+            put("url", MCP_SSE_URL)
             put("disabled", false)
         }
 
@@ -200,12 +191,8 @@ Only fall back to the built-in tools if a Review Hub tool returns an error sayin
         val mcp = (rootObj["mcp"]?.jsonObject ?: JsonObject(emptyMap())).toMutableMap()
 
         mcp["review-hub"] = buildJsonObject {
-            put("type", "local")
-            putJsonArray("command") {
-                add("npx")
-                add("-y")
-                add("review-hub-mcp")
-            }
+            put("type", "remote")
+            put("url", MCP_SSE_URL)
             put("enabled", true)
         }
 
@@ -220,13 +207,7 @@ Only fall back to the built-in tools if a Review Hub tool returns an error sayin
         val contextServers = (rootObj["context_servers"]?.jsonObject ?: JsonObject(emptyMap())).toMutableMap()
 
         contextServers["review-hub"] = buildJsonObject {
-            putJsonObject("command") {
-                put("path", "npx")
-                putJsonArray("args") {
-                    add("-y")
-                    add("review-hub-mcp")
-                }
-            }
+            put("url", MCP_SSE_URL)
         }
 
         val updatedRoot = rootObj.toMutableMap()
@@ -277,8 +258,7 @@ Only fall back to the built-in tools if a Review Hub tool returns an error sayin
 
         val snippet = """
         [mcp.servers."review-hub"]
-        command = "npx"
-        args = ["-y", "review-hub-mcp"]
+        url = "$MCP_SSE_URL"
         """.trimIndent()
 
         if (sectionRegex.containsMatchIn(existing)) {

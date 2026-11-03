@@ -25,6 +25,14 @@ object PathUtil {
         return normA.equals(normB, ignoreCase = true)
     }
 
+    fun normalizeWorkspace(workspace: String): String {
+        return workspace.replace('\\', '/').trimEnd('/')
+    }
+
+    fun toRelativePathString(path: String): String {
+        return path.replace('\\', '/').trimStart('/')
+    }
+
     fun normalizeWorkspaceCandidates(workspace: String): List<String> {
         val norm = workspace.replace('\\', '/').trimEnd('/')
         val variants = mutableListOf<String>()
