@@ -5,23 +5,39 @@
 
     <description><![CDATA[
         <h2>Review Hub for JetBrains IDEs</h2>
-        <p>Always see what AI coding agents changed in your project, and accept or reject individual hunks.</p>
-        <p>Works with Claude Code, OpenAI Codex, Cursor, Windsurf, OpenCode, Cline, Roo via native embedded MCP server (SSE).</p>
-
-        <p><img src="https://raw.githubusercontent.com/hungtx2001/review-hub/main/docs/images/panel-overview.png" alt="Review Hub ToolWindow" width="650"/></p>
+        <p><b>The safe review bridge for autonomous AI coding agents.</b> Always see what AI agents proposed, navigate changes, and accept or reject individual hunks before anything touches your disk.</p>
+        <p>Works natively with Claude Code, OpenAI Codex, Antigravity, OpenCode, Aider, Cursor, Windsurf, Cline, and Roo via native embedded MCP server (SSE).</p>
 
         <h3>Key Features</h3>
         <ul>
             <li><b>Native Embedded MCP Server:</b> Runs locally on port 49182 (SSE) as soon as you open the IDE. No Node.js runtime or npm install needed!</li>
-            <li><b>Decide-to-Disk:</b> AI edits are staged safely in memory before touching your files on disk.</li>
-            <li><b>Granular Hunk Review:</b> Accept or reject individual diff hunks with one click.</li>
-            <li><b>In-Editor Inlay Annotations:</b> Visual badges and inline diffs right inside your active editor tabs.</li>
-            <li><b>Native IntelliJ Diff:</b> Side-by-side and unified diff viewing powered by JetBrains Diff Framework.</li>
-            <li><b>Project View Indicators:</b> Clear status badges on modified files in your Project Tree.</li>
+            <li><b>In-Memory Staging:</b> AI edits are staged safely in memory before touching your files on disk.</li>
+            <li><b>In-Editor Inline Review:</b> Visual color highlights, gutter markers, and single-click <code>✓Accept | ✕Reject</code> inlay annotations.</li>
+            <li><b>Compact Floating Header Bar:</b> Quick Accept/Reject and Next/Prev hunk navigation directly on top of active editor tabs.</li>
+            <li><b>Checkpoint Snapshot &amp; One-Click Rollback:</b> Automatic pre-AI snapshots let you revert entire sessions back to baseline with peace of mind.</li>
+            <li><b>Sub-Millisecond Myers Diff:</b> High-performance diffing with automatic CRLF vs LF and indentation normalization.</li>
+            <li><b>MCP Agent Feedback Loop:</b> Exposes <code>get_review_status</code> so autonomous AI agents know whether proposals were approved.</li>
+            <li><b>Status Bar &amp; Project Tree Badges:</b> Always see pending files and hunk counts at a glance.</li>
         </ul>
-
-        <p><img src="https://raw.githubusercontent.com/hungtx2001/review-hub/main/docs/images/inline-diff.png" alt="Inline Diff Annotations" width="650"/></p>
     ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>v0.1.1</h3>
+        <ul>
+            <li><b>Myers Diff Engine:</b> High-performance Myers diff algorithm with prefix/suffix trimming for sub-millisecond hunk computation.</li>
+            <li><b>Checkpoint Snapshot &amp; Rollback:</b> One-click restore to baseline state, undoing AI edits if builds break.</li>
+            <li><b>Compact Editor Review Bar:</b> Streamlined 4-button header with Accept/Reject file and Next/Prev hunk navigation.</li>
+            <li><b>MCP Agent Feedback:</b> Added <code>get_review_status</code> and <code>rollback_checkpoint</code> tools for autonomous AI agent loops.</li>
+            <li><b>Fuzzy Indentation Matcher:</b> Automatic normalization of CRLF vs LF and spaces vs tabs.</li>
+            <li><b>Status Bar &amp; Project View:</b> Live change indicators and pending hunks badges.</li>
+        </ul>
+        <h3>v0.1.0</h3>
+        <ul>
+            <li>Initial release with embedded MCP server on port 49182 (SSE).</li>
+            <li>In-editor inline review with accept/reject hunk inlays.</li>
+            <li>ToolWindow tree view for staged changes.</li>
+        </ul>
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
 
