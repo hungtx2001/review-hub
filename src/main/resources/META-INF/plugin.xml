@@ -1,0 +1,135 @@
+<idea-plugin>
+    <id>com.reviewhub.jetbrains</id>
+    <name>Review Hub</name>
+    <vendor url="https://github.com/hungtx2001/review-hub">Trịnh Xuân Hưng</vendor>
+
+    <description><![CDATA[
+        <h2>Review Hub for JetBrains IDEs</h2>
+        <p>Always see what AI coding agents changed in your project, and accept or reject individual hunks.</p>
+        <p>Works with Claude Code, OpenAI Codex, Cursor, Windsurf, OpenCode, Cline, Roo via native embedded MCP server (SSE).</p>
+
+        <p><img src="https://raw.githubusercontent.com/hungtx2001/review-hub/main/docs/images/panel-overview.png" alt="Review Hub ToolWindow" width="650"/></p>
+
+        <h3>Key Features</h3>
+        <ul>
+            <li><b>Native Embedded MCP Server:</b> Runs locally on port 49182 (SSE) as soon as you open the IDE. No Node.js runtime or npm install needed!</li>
+            <li><b>Decide-to-Disk:</b> AI edits are staged safely in memory before touching your files on disk.</li>
+            <li><b>Granular Hunk Review:</b> Accept or reject individual diff hunks with one click.</li>
+            <li><b>In-Editor Inlay Annotations:</b> Visual badges and inline diffs right inside your active editor tabs.</li>
+            <li><b>Native IntelliJ Diff:</b> Side-by-side and unified diff viewing powered by JetBrains Diff Framework.</li>
+            <li><b>Project View Indicators:</b> Clear status badges on modified files in your Project Tree.</li>
+        </ul>
+
+        <p><img src="https://raw.githubusercontent.com/hungtx2001/review-hub/main/docs/images/inline-diff.png" alt="Inline Diff Annotations" width="650"/></p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="Review Hub" displayType="BALLOON" isLogByDefault="true"/>
+        <toolWindow id="Review Hub"
+                    secondary="true"
+                    icon="/icons/reviewHub.svg"
+                    anchor="right"
+                    factoryClass="com.reviewhub.toolwindow.ReviewHubToolWindowFactory"/>
+
+        <fileStatusProvider implementation="com.reviewhub.status.ReviewHubFileStatusProvider"/>
+        <projectViewNodeDecorator implementation="com.reviewhub.status.ReviewHubNodeDecorator"/>
+    </extensions>
+
+    <projectListeners>
+        <listener class="com.reviewhub.inline.ReviewHubEditorListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
+
+    <actions>
+        <!-- Standalone actions available in shortcuts, menus, and command search -->
+        <action id="ReviewHub.PrevHunk"
+                class="com.reviewhub.actions.PrevHunkAction"
+                text="Previous Change"
+                description="Navigate to previous pending change"
+                icon="AllIcons.Actions.MoveUp">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt UP"/>
+        </action>
+        <action id="ReviewHub.NextHunk"
+                class="com.reviewhub.actions.NextHunkAction"
+                text="Next Change"
+                description="Navigate to next pending change"
+                icon="AllIcons.Actions.MoveDown">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt DOWN"/>
+        </action>
+        <action id="ReviewHub.SetCheckpoint"
+                class="com.reviewhub.actions.SetCheckpointAction"
+                text="Set Checkpoint"
+                description="Accept current disk state as baseline"
+                icon="AllIcons.Actions.Commit"/>
+        <action id="ReviewHub.ClearCheckpoint"
+                class="com.reviewhub.actions.ClearCheckpointAction"
+                text="Clear Checkpoint"
+                description="Clear current checkpoint baseline"
+                icon="AllIcons.Actions.Rollback"/>
+        <action id="ReviewHub.AcceptAll"
+                class="com.reviewhub.actions.AcceptAllAction"
+                text="Accept All Changes"
+                description="Accept all pending changes and apply to disk"
+                icon="AllIcons.Actions.Checked"/>
+        <action id="ReviewHub.RejectAll"
+                class="com.reviewhub.actions.RejectAllAction"
+                text="Reject All Changes"
+                description="Reject all pending changes and restore baseline"
+                icon="AllIcons.Actions.Cancel"/>
+        <action id="ReviewHub.CopyMcpConfig"
+                class="com.reviewhub.actions.CopyMcpConfigAction"
+                text="Copy MCP Config"
+                description="Copy JSON configuration for AI Tools (Claude Code, Cline, Roo Code)"/>
+        <action id="ReviewHub.CopyAgentRules"
+                class="com.reviewhub.actions.CopyAgentRulesAction"
+                text="Copy AI Agent Rules"
+                description="Copy instruction rules for AI Tools (CLAUDE.md, .cursorrules, .clinerules, AGENTS.md)"/>
+        <action id="ReviewHub.RegisterMcp"
+                class="com.reviewhub.actions.RegisterMcpAction"
+                text="Configure AI Tools (MCP)..."
+                description="Scan and configure Review Hub MCP for AI CLIs (Codex, Claude Code, Cursor, Windsurf, OpenCode, Cline, Roo Code)"/>
+        <action id="ReviewHub.Refresh"
+                class="com.reviewhub.actions.RefreshAction"
+                text="Refresh Changes"
+                description="Refresh pending changes from Review Hub"
+                icon="AllIcons.Actions.Refresh"/>
+
+        <!-- Streamlined, clean daily ToolWindow toolbar -->
+        
+        <group id="ReviewHub.MoreGroup" text="More Options" icon="AllIcons.Actions.More" popup="true">
+            <reference ref="ReviewHub.RegisterMcp"/>
+            <reference ref="ReviewHub.CopyMcpConfig"/>
+            <reference ref="ReviewHub.CopyAgentRules"/>
+        </group>
+
+        <group id="ReviewHub.ToolBar" text="Review Hub Actions" popup="false">
+            <reference ref="ReviewHub.AcceptAll"/>
+            <reference ref="ReviewHub.RejectAll"/>
+            <separator/>
+            <reference ref="ReviewHub.SetCheckpoint"/>
+            <reference ref="ReviewHub.ClearCheckpoint"/>
+            <separator/>
+            <reference ref="ReviewHub.Refresh"/>
+            <separator/>
+            <reference ref="ReviewHub.MoreGroup"/>
+        </group>
+
+        <group id="ReviewHub.ToolsMenu" text="Review Hub" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <reference ref="ReviewHub.RegisterMcp"/>
+            <separator/>
+            <reference ref="ReviewHub.SetCheckpoint"/>
+            <reference ref="ReviewHub.ClearCheckpoint"/>
+            <separator/>
+            <reference ref="ReviewHub.AcceptAll"/>
+            <reference ref="ReviewHub.RejectAll"/>
+            <separator/>
+            <reference ref="ReviewHub.CopyMcpConfig"/>
+            <reference ref="ReviewHub.CopyAgentRules"/>
+            <separator/>
+            <reference ref="ReviewHub.Refresh"/>
+        </group>
+    </actions>
+</idea-plugin>
