@@ -1,4 +1,4 @@
-# Review Hub (VS Code & JetBrains IDEs)
+﻿# Review Hub (VS Code & JetBrains IDEs)
 
 
 Xem **chính xác** AI coding agent đã đổi gì trong project của bạn — **bất kể agent chạy ở chế độ quyền nào** — và duyệt/từ chối **từng khối (hunk) một**, kiểu hunkwise.
@@ -126,12 +126,29 @@ Thêm cấu hình sau vào công cụ AI của bạn (Claude Code, Cline, Roo Co
 
 ## 4. Bề mặt giao diện
 
-### Giao diện trên VS Code
-- **Activity Bar Panel**: Xem danh sách tất cả các file có thay đổi chờ duyệt, nhóm theo workspace.
-- **Review Tab**: Màn hình diff toàn diện so sánh trực quan giữa baseline và đề xuất mới.
-- **Inline Staged Review**: CodeLens và gutter decorations hiển thị trực tiếp trên editor các nút **Accept** và **Reject** cho từng hunk.
+### 4.1. Giao diện Review Panel (Sidebar)
+Quản lý tập trung danh sách tất cả các file có thay đổi do AI Agent đề xuất, hiển thị chi tiết số dòng thêm (+), bớt (-) và tổng số hunk pending:
 
-### Giao diện trên JetBrains IDEs
+<p align="center">
+  <img src="docs/images/vscode-panel.png" alt="Review Hub Sidebar Panel" width="400" />
+</p>
+
+- **Danh sách file trực quan**: Thống kê rõ ràng từng file bị sửa đổi (+14 -21, +19,...).
+- **Thao tác 1 chạm**: Duyệt tất cả (✓ Accept All) hoặc từ chối tất cả (✕ Reject All) trên thanh công cụ.
+- **Thanh trạng thái thời gian thực**: Hiển thị tổng số file và hunk đang chờ duyệt ở đáy panel.
+
+### 4.2. Review trực tiếp trong Editor (Inline Staged Review)
+Không cần mở tab diff rời rạc hay popup ngắt quãng mạch làm việc — thay đổi được hiển thị trực tiếp ngay trong mã nguồn với CodeLens và highlight màu sắc chuẩn:
+
+<p align="center">
+  <img src="docs/images/vscode-inline-diff.png" alt="Inline Staged Review with CodeLens" width="760" />
+</p>
+
+- **CodeLens ✓Accept | ✕Reject**: Phê duyệt hoặc từ chối riêng lẻ từng hunk ngay phía trên khối thay đổi.
+- **Trực quan hóa khối diff**: Dòng cũ (xóa) hiển thị nền đỏ, dòng mới (thêm) hiển thị nền xanh.
+- **Save Guard**: Tự động chặn lưu đè khi còn hunk pending, đảm bảo đĩa chỉ ghi nhận những gì bạn chấp thuận.
+
+### 4.3. Giao diện trên JetBrains IDEs
 - **Review Hub ToolWindow**: Panel bên phải hiển thị cây thay đổi kèm thống kê số hunk.
 - **Native Diff Viewer**: Tận dụng trình xem diff mạnh mẽ của JetBrains với đầy đủ highlight cú pháp.
 - **In-Editor Inlays**: Hiển thị khối thay đổi trực tiếp ngay trên editor tab đang mở.
