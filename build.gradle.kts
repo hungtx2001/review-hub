@@ -35,7 +35,7 @@ intellijPlatform {
         version = providers.gradleProperty("pluginVersion").getOrElse("0.3.3")
         description = """
             Always see what AI coding agents changed in your project, and accept or reject individual hunks.
-            Works with Claude Code, opencode, dsh, Cline, Roo via MCP, and catches direct writes too.
+            Works with Claude Code, OpenAI Codex, Cursor, Windsurf, OpenCode, Cline, Roo via native embedded MCP server.
         """.trimIndent()
         vendor {
             name = "Tong Duy Dat, Trinh Xuan Hung"
@@ -52,15 +52,6 @@ intellijPlatform {
 }
 
 tasks {
-    processResources {
-        val hubBundle = file("../dist/hub-server.cjs")
-        if (hubBundle.exists()) {
-            from(hubBundle) {
-                into("server")
-            }
-        }
-    }
-
     withType<JavaCompile> {
         sourceCompatibility = "17"
         targetCompatibility = "17"

@@ -1,12 +1,7 @@
-node_modules/
-dist/
-.test-dist/
-mcp/bin/
-*.vsix
-*.zip
-*.tgz
-.idea/
 .gradle/
-jetbrains/build/
-jetbrains/.intellijPlatform/
+build/
+.intellijPlatform/
 .kotlin/
+*.zip
+.idea/
+*.log
