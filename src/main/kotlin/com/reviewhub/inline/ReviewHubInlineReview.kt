@@ -41,6 +41,7 @@ object ReviewHubInlineReview {
     private val STAGED_HASH_KEY = Key.create<String>("reviewhub.staged_hash")
     private val MOUSE_LISTENER_ATTACHED_KEY = Key.create<Boolean>("reviewhub.mouse_listener_attached")
     private val HUNK_LINES_KEY = Key.create<List<Int>>("reviewhub.hunk_lines")
+    private val MERGED_BLOCKS_KEY = Key.create<List<MergedBlock>>("reviewhub.merged_blocks")
 
     // Colors matching the UI in Antigravity / Inline Review
     private val RED_BG = JBColor(Color(0xFF, 0xEB, 0xEC), Color(0x4C, 0x1C, 0x24))
@@ -111,6 +112,7 @@ object ReviewHubInlineReview {
 
         editor.putUserData(STAGED_HASH_KEY, null)
         editor.putUserData(HUNK_LINES_KEY, null)
+        editor.putUserData(MERGED_BLOCKS_KEY, null)
 
         val doc = editor.document
         if (!doc.isWritable) {
@@ -187,8 +189,7 @@ object ReviewHubInlineReview {
         val prevHash = editor.getUserData(STAGED_HASH_KEY)
 
         if (prevHash != currentHash) {
-            val wasReadOnly = !doc.isWritable
-            if (wasReadOnly) {
+            if (!doc.isWritable) {
                 doc.setReadOnly(false)
             }
             WriteCommandAction.runWriteCommandAction(project) {
@@ -196,9 +197,13 @@ object ReviewHubInlineReview {
                     doc.setText(merged.text)
                 }
             }
-            doc.setReadOnly(true)
+            // Allow developer to directly tweak/edit proposed code in editor before accept
+            if (!doc.isWritable) {
+                doc.setReadOnly(false)
+            }
             editor.putUserData(STAGED_HASH_KEY, currentHash)
         }
+        editor.putUserData(MERGED_BLOCKS_KEY, merged.blocks)
 
 
         // Clean up previous highlighters and inlays
@@ -449,6 +454,34 @@ object ReviewHubInlineReview {
         return !lines.isNullOrEmpty()
     }
 
+        fun extractResolvedContent(editor: Editor): String {
+        val doc = editor.document
+        val blocks = editor.getUserData(MERGED_BLOCKS_KEY)
+        if (blocks.isNullOrEmpty()) {
+            return doc.text
+        }
+
+        val deletedLines = mutableSetOf<Int>()
+        for (b in blocks) {
+            if (b.kind == MergedBlockKind.DELETED) {
+                for (line in b.startLine until b.endLine) {
+                    deletedLines.add(line)
+                }
+            }
+        }
+
+        val lineCount = doc.lineCount
+        val resultLines = mutableListOf<String>()
+        for (i in 0 until lineCount) {
+            if (i !in deletedLines) {
+                val start = doc.getLineStartOffset(i)
+                val end = doc.getLineEndOffset(i)
+                resultLines.add(doc.charsSequence.subSequence(start, end).toString())
+            }
+        }
+        return resultLines.joinToString("\n")
+    }
+
     private fun createHeaderComponent(
         project: Project,
         editor: Editor,
@@ -470,8 +503,9 @@ object ReviewHubInlineReview {
         acceptAllBtn.addActionListener {
             val hubManager = project.getService(HubManager::class.java)
             val client = hubManager.client ?: return@addActionListener
+            val customText = extractResolvedContent(editor)
             ApplicationManager.getApplication().executeOnPooledThread {
-                client.accept(changeId = changeId, workspace = workspace)
+                client.accept(changeId = changeId, workspace = workspace, customContent = customText)
                 hubManager.refresh()
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater

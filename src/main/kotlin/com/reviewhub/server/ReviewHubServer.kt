@@ -131,7 +131,7 @@ class ReviewHubServer(
             if (exchange.requestMethod.equals("POST", ignoreCase = true)) {
                 val body = readRequestBody(exchange)
                 val req = json.decodeFromString<DecideRequest>(body)
-                val res = store.accept(req.changeId, req.workspace ?: workspacePath, req.path, req.hunkIds)
+                val res = store.accept(req.changeId, req.workspace ?: workspacePath, req.path, req.hunkIds, req.customContent)
                 if (res != null) {
                     sendJson(exchange, 200, json.encodeToJsonElement(res))
                 } else {

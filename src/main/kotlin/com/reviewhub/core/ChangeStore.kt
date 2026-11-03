@@ -157,7 +157,13 @@ class ChangeStore {
         return changeSet
     }
 
-    fun accept(changeId: String? = null, workspace: String? = null, path: String? = null, hunkIds: List<String>? = null): DecideResult? {
+    fun accept(
+        changeId: String? = null,
+        workspace: String? = null,
+        path: String? = null,
+        hunkIds: List<String>? = null,
+        customContent: String? = null
+    ): DecideResult? {
         val cs = resolveTargetChangeSet(changeId, workspace, path) ?: return null
         val normWs = cs.workspace
 
@@ -170,7 +176,11 @@ class ChangeStore {
         }
 
         val allDecided = updatedHunks.none { it.decision == "pending" }
-        val resolvedContent = HunkDiff.resolve(cs.baseline, updatedHunks)
+        val resolvedContent = if (customContent != null && allDecided) {
+            customContent
+        } else {
+            HunkDiff.resolve(cs.baseline, updatedHunks)
+        }
 
         // Write accepted content to disk
         val absFile = File(cs.absPath ?: File(normWs, cs.path).absolutePath)

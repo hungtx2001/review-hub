@@ -81,7 +81,8 @@ data class DecideRequest(
     val changeId: String? = null,
     val path: String? = null,
     val workspace: String? = null,
-    val hunkIds: List<String>? = null
+    val hunkIds: List<String>? = null,
+    val customContent: String? = null
 )
 
 @Serializable

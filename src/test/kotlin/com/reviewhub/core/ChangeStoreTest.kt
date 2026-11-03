@@ -147,5 +147,23 @@ class ChangeStoreTest {
         assertEquals("idle", wsStatusAfter.status)
         assertEquals(0, wsStatusAfter.pendingHunks)
     }
+
+    @Test
+    fun `accept with customContent saves user tweaked content to disk`() {
+        val wsDir = tempFolder.newFolder("tweak-project")
+        val file = File(wsDir, "Tweak.kt")
+        file.writeText("fun calc() = 1")
+
+        val store = ChangeStore()
+        val cs = store.propose(wsDir.absolutePath, "Tweak.kt", "fun calc() = 2")
+
+        // User tweaked the content before accepting: "fun calc() = 100 // edited by human"
+        val customText = "fun calc() = 100 // edited by human"
+        val result = store.accept(changeId = cs.id, workspace = wsDir.absolutePath, customContent = customText)
+
+        assertNotNull(result)
+        assertTrue(result!!.resolved)
+        assertEquals(customText, file.readText())
+    }
 }
 

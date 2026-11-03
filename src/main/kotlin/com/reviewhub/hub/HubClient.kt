@@ -137,10 +137,16 @@ class HubClient(
         }
     }
 
-    fun accept(changeId: String? = null, workspace: String? = null, path: String? = null, hunkIds: List<String>? = null): DecideResult? {
+    fun accept(
+        changeId: String? = null,
+        workspace: String? = null,
+        path: String? = null,
+        hunkIds: List<String>? = null,
+        customContent: String? = null
+    ): DecideResult? {
         val normWs = workspace?.replace('\\', '/')
         val normPath = path?.replace('\\', '/')
-        return decide("/changes/accept", DecideRequest(changeId, normPath, normWs, hunkIds))
+        return decide("/changes/accept", DecideRequest(changeId, normPath, normWs, hunkIds, customContent))
     }
 
     fun reject(changeId: String? = null, workspace: String? = null, path: String? = null, hunkIds: List<String>? = null): DecideResult? {
