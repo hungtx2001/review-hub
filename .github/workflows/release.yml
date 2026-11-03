@@ -83,6 +83,7 @@ jobs:
           prerelease: ${{ github.event.inputs.prerelease || false }}
           make_latest: true
           generate_release_notes: true
+          append_body: false
           files: build/distributions/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
