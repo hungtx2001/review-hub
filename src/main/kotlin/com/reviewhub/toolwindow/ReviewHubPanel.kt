@@ -5,6 +5,7 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.JBMenuItem
 import com.intellij.openapi.ui.JBPopupMenu
@@ -23,6 +24,8 @@ import com.reviewhub.inline.ReviewHubInlineReview
 import com.reviewhub.model.ChangeSummary
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
@@ -77,9 +80,22 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
             ) {
                 if (value == null) return
 
-                icon = if (value.status == "applied") AllIcons.Actions.Commit else AllIcons.FileTypes.Any_type
+                val ioFile = File(value.path)
+                val fileName = ioFile.name
+                val dirPath = ioFile.parent?.replace('\\', '/')
 
-                append(value.path, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                icon = if (value.status == "applied") {
+                    AllIcons.Actions.Commit
+                } else {
+                    FileTypeManager.getInstance().getFileTypeByFileName(fileName).icon
+                        ?: AllIcons.FileTypes.Any_type
+                }
+
+                append(fileName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+
+                if (!dirPath.isNullOrEmpty()) {
+                    append("  $dirPath", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                }
 
                 if (value.added > 0 || value.removed > 0) {
                     append("  ")
@@ -94,7 +110,11 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                     }
                 }
 
-                toolTipText = "${value.path} (+${value.added} -${value.removed})"
+                if (value.pending > 0) {
+                    append("  (${value.pending})", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                }
+
+                toolTipText = "${value.path} (+${value.added} -${value.removed}, ${value.pending} pending hunk(s))"
             }
         }
 
@@ -109,6 +129,26 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                     openRealFile(selected)
                 } else if (SwingUtilities.isRightMouseButton(e)) {
                     showContextMenu(e, selected)
+                }
+            }
+        })
+
+        changeList.addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                val selected = changeList.selectedValue ?: return
+                when (e.keyCode) {
+                    KeyEvent.VK_ENTER -> {
+                        e.consume()
+                        openRealFile(selected)
+                    }
+                    KeyEvent.VK_SPACE -> {
+                        e.consume()
+                        ReviewHubDiffViewer.showDiff(project, selected)
+                    }
+                    KeyEvent.VK_DELETE, KeyEvent.VK_BACK_SPACE -> {
+                        e.consume()
+                        rejectSingleItem(selected)
+                    }
                 }
             }
         })
@@ -131,6 +171,43 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         ReviewHubInlineReview.openReviewFile(project, item.path)
     }
 
+    private fun acceptSingleItem(item: ChangeSummary) {
+        val workspace = project.basePath ?: return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            hubManager.acceptChange(changeId = item.id, workspace = workspace)
+            hubManager.refresh()
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                val file = File(workspace, item.path)
+                val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
+                if (vf != null && vf.isValid) {
+                    ReviewHubInlineReview.clearFileReview(project, vf)
+                }
+                VirtualFileManager.getInstance().asyncRefresh(null)
+            }
+        }
+    }
+
+    private fun rejectSingleItem(item: ChangeSummary) {
+        val workspace = project.basePath ?: return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            hubManager.rejectChange(changeId = item.id, workspace = workspace)
+            hubManager.refresh()
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                val file = File(workspace, item.path)
+                val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
+                if (vf != null && vf.isValid) {
+                    ReviewHubInlineReview.clearFileReview(project, vf)
+                    if (!file.exists()) {
+                        FileEditorManager.getInstance(project).closeFile(vf)
+                    }
+                }
+                VirtualFileManager.getInstance().asyncRefresh(null)
+            }
+        }
+    }
+
     private fun showContextMenu(e: MouseEvent, item: ChangeSummary) {
         val menu = JBPopupMenu()
 
@@ -150,44 +227,13 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
         val acceptItem = JBMenuItem("Accept File", AllIcons.Actions.Checked)
         acceptItem.addActionListener {
-            val client = hubManager.client ?: return@addActionListener
-            val workspace = project.basePath ?: return@addActionListener
-            ApplicationManager.getApplication().executeOnPooledThread {
-                client.accept(changeId = item.id, workspace = workspace)
-                hubManager.refresh()
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    val file = File(workspace, item.path)
-                    val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                    if (vf != null && vf.isValid) {
-                        ReviewHubInlineReview.clearFileReview(project, vf)
-                    }
-                    VirtualFileManager.getInstance().asyncRefresh(null)
-                }
-            }
+            acceptSingleItem(item)
         }
         menu.add(acceptItem)
 
         val rejectItem = JBMenuItem("Reject File", AllIcons.Actions.Cancel)
         rejectItem.addActionListener {
-            val client = hubManager.client ?: return@addActionListener
-            val workspace = project.basePath ?: return@addActionListener
-            ApplicationManager.getApplication().executeOnPooledThread {
-                client.reject(changeId = item.id, workspace = workspace)
-                hubManager.refresh()
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    val file = File(workspace, item.path)
-                    val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                    if (vf != null && vf.isValid) {
-                        ReviewHubInlineReview.clearFileReview(project, vf)
-                        if (!file.exists()) {
-                            FileEditorManager.getInstance(project).closeFile(vf)
-                        }
-                    }
-                    VirtualFileManager.getInstance().asyncRefresh(null)
-                }
-            }
+            rejectSingleItem(item)
         }
         menu.add(rejectItem)
 
@@ -195,7 +241,6 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
         val acceptAllItem = JBMenuItem("Accept All Changes", AllIcons.Actions.Checked)
         acceptAllItem.addActionListener {
-            val client = hubManager.client ?: return@addActionListener
             val workspace = project.basePath ?: return@addActionListener
             val confirm = Messages.showYesNoDialog(
                 project,
@@ -206,7 +251,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
             if (confirm == Messages.YES) {
                 ApplicationManager.getApplication().executeOnPooledThread {
                     for (c in hubManager.changes) {
-                        client.accept(changeId = c.id, workspace = workspace)
+                        hubManager.acceptChange(changeId = c.id, workspace = workspace)
                     }
                     hubManager.refresh()
                     ApplicationManager.getApplication().invokeLater {
@@ -221,7 +266,6 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
         val rejectAllItem = JBMenuItem("Reject All Changes", AllIcons.Actions.Cancel)
         rejectAllItem.addActionListener {
-            val client = hubManager.client ?: return@addActionListener
             val workspace = project.basePath ?: return@addActionListener
             val confirm = Messages.showYesNoDialog(
                 project,
@@ -232,7 +276,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
             if (confirm == Messages.YES) {
                 ApplicationManager.getApplication().executeOnPooledThread {
                     for (c in hubManager.changes) {
-                        client.reject(changeId = c.id, workspace = workspace)
+                        hubManager.rejectChange(changeId = c.id, workspace = workspace)
                     }
                     hubManager.refresh()
                     ApplicationManager.getApplication().invokeLater {

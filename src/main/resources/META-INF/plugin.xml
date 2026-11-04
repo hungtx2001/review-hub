@@ -76,6 +76,34 @@
                 icon="AllIcons.Actions.MoveDown">
             <keyboard-shortcut keymap="$default" first-keystroke="alt DOWN"/>
         </action>
+        <action id="ReviewHub.AcceptHunk"
+                class="com.reviewhub.actions.AcceptHunkAction"
+                text="Accept Current Hunk"
+                description="Accept the pending hunk at or nearest to the caret"
+                icon="AllIcons.Actions.Checked">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt A"/>
+        </action>
+        <action id="ReviewHub.RejectHunk"
+                class="com.reviewhub.actions.RejectHunkAction"
+                text="Reject Current Hunk"
+                description="Reject the pending hunk at or nearest to the caret"
+                icon="AllIcons.Actions.Cancel">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt R"/>
+        </action>
+        <action id="ReviewHub.AcceptFile"
+                class="com.reviewhub.actions.AcceptFileAction"
+                text="Accept Current File"
+                description="Accept all pending changes in the current file"
+                icon="AllIcons.Actions.Checked">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt A"/>
+        </action>
+        <action id="ReviewHub.RejectFile"
+                class="com.reviewhub.actions.RejectFileAction"
+                text="Reject Current File"
+                description="Reject all pending changes in the current file"
+                icon="AllIcons.Actions.Cancel">
+            <keyboard-shortcut keymap="$default" first-keystroke="control alt Z"/>
+        </action>
         <action id="ReviewHub.SetCheckpoint"
                 class="com.reviewhub.actions.SetCheckpointAction"
                 text="Set Checkpoint"

@@ -14,7 +14,9 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.EditorNotifications
 import com.reviewhub.core.ChangeStore
 import com.reviewhub.inline.ReviewHubInlineReview
+import com.reviewhub.model.ChangeSet
 import com.reviewhub.model.ChangeSummary
+import com.reviewhub.model.DecideResult
 import com.reviewhub.model.HubEntry
 import com.reviewhub.server.ReviewHubServer
 import com.reviewhub.util.PathUtil
@@ -36,6 +38,9 @@ class HubManager(private val project: Project) : Disposable {
 
     val store: ChangeStore = ChangeStore()
     private var embeddedServer: ReviewHubServer? = null
+
+    val isLocalStore: Boolean
+        get() = embeddedServer != null
 
     var client: HubClient? = null
         private set
@@ -170,10 +175,14 @@ class HubManager(private val project: Project) : Disposable {
     }
 
     fun refresh() {
-        val c = client ?: return
         val workspace = project.basePath ?: return
         try {
-            val newChanges = c.listChanges(workspace)
+            val newChanges = if (isLocalStore) {
+                store.listChanges(workspace)
+            } else {
+                val c = client ?: return
+                c.listChanges(workspace)
+            }
             if (newChanges != changes) {
                 val previousPendingPaths = changes.filter { it.status != "resolved" }.map { it.path }.toSet()
                 changes = newChanges
@@ -219,19 +228,61 @@ class HubManager(private val project: Project) : Disposable {
             }
         } catch (e: Exception) {
             logger.debug("Failed to refresh changes from Review Hub", e)
-            if (!c.healthCheck()) {
+            val c = client
+            if (!isLocalStore && c != null && !c.healthCheck()) {
                 client = null
                 notifyListeners()
             }
         }
     }
 
+    fun getChangeSet(changeId: String, workspace: String? = project.basePath): ChangeSet? {
+        return if (isLocalStore) {
+            store.getChange(changeId, workspace)
+        } else {
+            client?.getChange(changeId, workspace)
+        }
+    }
+
+    fun acceptChange(
+        changeId: String? = null,
+        workspace: String? = project.basePath,
+        path: String? = null,
+        hunkIds: List<String>? = null,
+        customContent: String? = null
+    ): DecideResult? {
+        return if (isLocalStore) {
+            val res = store.accept(changeId, workspace, path, hunkIds, customContent)
+            refresh()
+            res
+        } else {
+            val res = client?.accept(changeId, workspace, path, hunkIds, customContent)
+            refresh()
+            res
+        }
+    }
+
+    fun rejectChange(
+        changeId: String? = null,
+        workspace: String? = project.basePath,
+        path: String? = null,
+        hunkIds: List<String>? = null
+    ): DecideResult? {
+        return if (isLocalStore) {
+            val res = store.reject(changeId, workspace, path, hunkIds)
+            refresh()
+            res
+        } else {
+            val res = client?.reject(changeId, workspace, path, hunkIds)
+            refresh()
+            res
+        }
+    }
+
     fun acceptAll() {
-        val c = client ?: return
         val workspace = project.basePath ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
-            c.accept(workspace = workspace)
-            refresh()
+            acceptChange(workspace = workspace)
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) {
                     ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
@@ -242,11 +293,9 @@ class HubManager(private val project: Project) : Disposable {
     }
 
     fun rejectAll() {
-        val c = client ?: return
         val workspace = project.basePath ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
-            c.reject(workspace = workspace)
-            refresh()
+            rejectChange(workspace = workspace)
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) {
                     ReviewHubInlineReview.reloadAllOpenReviewEditors(project)

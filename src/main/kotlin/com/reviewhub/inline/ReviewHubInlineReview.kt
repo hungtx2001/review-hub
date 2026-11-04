@@ -44,7 +44,11 @@ object ReviewHubInlineReview {
     private val HUNK_LINES_KEY = Key.create<List<Int>>("reviewhub.hunk_lines")
     private val MERGED_BLOCKS_KEY = Key.create<List<MergedBlock>>("reviewhub.merged_blocks")
 
-    // Colors matching the UI in Antigravity / Inline Review
+    private val CHANGE_ID_KEY = Key.create<String>("reviewhub.change_id")
+    private val REL_PATH_KEY = Key.create<String>("reviewhub.rel_path")
+
+    private val ACCEPT_PILL_BG = JBColor(Color(0xDA, 0xFB, 0xE1), Color(0x19, 0x3D, 0x24))
+    private val REJECT_PILL_BG = JBColor(Color(0xFF, 0xE2, 0xE5), Color(0x49, 0x1D, 0x24))
     private val RED_BG = JBColor(Color(0xFF, 0xEB, 0xEC), Color(0x4C, 0x1C, 0x24))
     private val GREEN_BG = JBColor(Color(0xE6, 0xFF, 0xED), Color(0x1F, 0x3E, 0x24))
     private val GREEN_GUTTER = JBColor(Color(0x2E, 0xA0, 0x43), Color(0x3F, 0xB9, 0x50))
@@ -157,6 +161,8 @@ object ReviewHubInlineReview {
         editor.putUserData(STAGED_HASH_KEY, null)
         editor.putUserData(HUNK_LINES_KEY, null)
         editor.putUserData(MERGED_BLOCKS_KEY, null)
+        editor.putUserData(CHANGE_ID_KEY, null)
+        editor.putUserData(REL_PATH_KEY, null)
 
         val doc = editor.document
         if (!doc.isWritable) {
@@ -185,10 +191,29 @@ object ReviewHubInlineReview {
 
     fun updateInlays(project: Project, editor: Editor, relPath: String) {
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: return
         val workspace = project.basePath ?: return
         val vf = LocalFileSystem.getInstance().findFileByIoFile(File(workspace, relPath))
 
+        // Direct in-memory fast-path (< 1ms, zero HTTP overhead)
+        if (hubManager.isLocalStore) {
+            val changeSet = hubManager.store.findChangeByPath(workspace, relPath)
+            val runRender = Runnable {
+                if (project.isDisposed || editor.isDisposed) return@Runnable
+                if (changeSet == null || changeSet.status == "resolved") {
+                    clear(project, editor, vf)
+                } else {
+                    render(project, editor, changeSet.id, changeSet.baseline, changeSet.hunks, workspace, relPath, vf)
+                }
+            }
+            if (ApplicationManager.getApplication().isDispatchThread) {
+                runRender.run()
+            } else {
+                ApplicationManager.getApplication().invokeLater(runRender)
+            }
+            return
+        }
+
+        val client = hubManager.client ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
             val changeSummary = hubManager.findChange(relPath)
 
@@ -231,6 +256,11 @@ object ReviewHubInlineReview {
 
         val currentHash = "${changeId}_${merged.text.hashCode()}"
         val prevHash = editor.getUserData(STAGED_HASH_KEY)
+        val hadStagedBefore = prevHash != null
+
+        val prevCaretLine = editor.caretModel.logicalPosition.line
+        val prevCaretCol = editor.caretModel.logicalPosition.column
+        val prevScrollOffset = editor.scrollingModel.verticalScrollOffset
 
         if (prevHash != currentHash) {
             if (!doc.isWritable) {
@@ -241,14 +271,20 @@ object ReviewHubInlineReview {
                     doc.setText(merged.text)
                 }
             }
-            // Allow developer to directly tweak/edit proposed code in editor before accept
             if (!doc.isWritable) {
                 doc.setReadOnly(false)
             }
             editor.putUserData(STAGED_HASH_KEY, currentHash)
+
+            if (hadStagedBefore) {
+                val safeLine = prevCaretLine.coerceIn(0, (doc.lineCount - 1).coerceAtLeast(0))
+                editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(safeLine, prevCaretCol.coerceAtLeast(0)))
+                editor.scrollingModel.scrollVertically(prevScrollOffset)
+            }
         }
         editor.putUserData(MERGED_BLOCKS_KEY, merged.blocks)
-
+        editor.putUserData(CHANGE_ID_KEY, changeId)
+        editor.putUserData(REL_PATH_KEY, relPath)
 
         // Clean up previous highlighters and inlays
         val existingHighlighters = editor.getUserData(HIGHLIGHTERS_KEY)
@@ -275,10 +311,12 @@ object ReviewHubInlineReview {
             .filter { it.kind != MergedBlockKind.CONTEXT && it.hunkId != null }
             .groupBy { it.hunkId }
 
+        val totalPendingCount = blocksByHunk.size
+        var hunkOrderIndex = 1
+
         for ((hunkId, blocks) in blocksByHunk) {
             if (hunkId == null) continue
             val firstBlock = blocks.minByOrNull { it.startLine } ?: continue
-            val hunkNumber = firstBlock.hunkIndex
 
             val maxLine = (doc.lineCount - 1).coerceAtLeast(0)
             val firstStartLine = firstBlock.startLine.coerceIn(0, maxLine)
@@ -295,10 +333,12 @@ object ReviewHubInlineReview {
                 editor = editor,
                 indentText = indent,
                 hunkId = hunkId,
-                hunkNumber = hunkNumber,
+                hunkNumber = hunkOrderIndex,
+                totalHunks = totalPendingCount,
                 onAccept = { decideHunk(project, changeId, workspace, relPath, hunkId, "accept") },
                 onReject = { decideHunk(project, changeId, workspace, relPath, hunkId, "reject") }
             )
+            hunkOrderIndex++
 
             val inlay = editor.inlayModel.addBlockElement(
                 firstLineOffset,
@@ -352,18 +392,15 @@ object ReviewHubInlineReview {
         }.sorted()
         editor.putUserData(HUNK_LINES_KEY, hunkLines)
 
-        // Automatically scroll to the first pending hunk if opened at top
-        if (hunkLines.isNotEmpty()) {
+        // Automatically scroll to the first pending hunk only when newly opened at top
+        if (!hadStagedBefore && hunkLines.isNotEmpty() && prevCaretLine == 0) {
             val firstLine = hunkLines.first()
-            val currentLine = editor.caretModel.logicalPosition.line
-            if (currentLine == 0) {
-                editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(firstLine, 0))
-                editor.scrollingModel.scrollTo(com.intellij.openapi.editor.LogicalPosition(firstLine, 0), com.intellij.openapi.editor.ScrollType.CENTER)
-            }
+            editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(firstLine, 0))
+            editor.scrollingModel.scrollTo(com.intellij.openapi.editor.LogicalPosition(firstLine, 0), com.intellij.openapi.editor.ScrollType.CENTER)
         }
 
-        // Add header bar with file switcher, hunk navigation, Diff viewer, and Accept/Reject buttons
-        editor.headerComponent = ReviewHubHeaderBar(project, editor, relPath)
+        // Streamlined compact header bar
+        editor.headerComponent = createHeaderComponent(project, editor, changeId, workspace, relPath, hunkLines.size)
 
         // Attach mouse listener once to handle clicks and hover on "✓Accept | ✕Reject"
         attachMouseListeners(editor)
@@ -544,6 +581,136 @@ object ReviewHubInlineReview {
         return resultLines.joinToString("\n")
     }
 
+    fun decideCurrentHunk(project: Project, editor: Editor, kind: String) {
+        val changeId = editor.getUserData(CHANGE_ID_KEY) ?: return
+        val relPath = editor.getUserData(REL_PATH_KEY) ?: return
+        val workspace = project.basePath ?: return
+        val blocks = editor.getUserData(MERGED_BLOCKS_KEY) ?: return
+
+        val blocksByHunk = blocks
+            .filter { it.kind != MergedBlockKind.CONTEXT && it.hunkId != null }
+            .groupBy { it.hunkId!! }
+        if (blocksByHunk.isEmpty()) return
+
+        val caretLine = editor.caretModel.logicalPosition.line
+        // Find hunk containing caret, or nearest hunk at/after caret, or last hunk
+        val targetHunkId = blocksByHunk.entries.firstOrNull { (_, hunkBlocks) ->
+            val minLine = hunkBlocks.minOf { it.startLine }
+            val maxLine = hunkBlocks.maxOf { it.endLine }
+            caretLine in (minLine - 1)..maxLine
+        }?.key ?: blocksByHunk.entries
+            .sortedBy { (_, hunkBlocks) -> hunkBlocks.minOf { it.startLine } }
+            .firstOrNull { (_, hunkBlocks) -> hunkBlocks.minOf { it.startLine } >= caretLine }
+            ?.key ?: blocksByHunk.keys.first()
+
+        decideHunk(project, changeId, workspace, relPath, targetHunkId, kind)
+    }
+
+    fun decideCurrentFile(project: Project, editor: Editor, kind: String) {
+        val changeId = editor.getUserData(CHANGE_ID_KEY) ?: return
+        val relPath = editor.getUserData(REL_PATH_KEY) ?: return
+        val workspace = project.basePath ?: return
+        val hubManager = project.getService(HubManager::class.java)
+        val customText = if (kind == "accept") extractResolvedContent(editor) else null
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (kind == "accept") {
+                hubManager.acceptChange(changeId = changeId, workspace = workspace, customContent = customText)
+            } else {
+                hubManager.rejectChange(changeId = changeId, workspace = workspace)
+            }
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                val file = File(workspace, relPath)
+                val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
+                if (vf != null && vf.isValid) {
+                    clearFileReview(project, vf)
+                }
+                VirtualFileManager.getInstance().asyncRefresh(null)
+            }
+        }
+    }
+
+    private fun createHeaderComponent(
+        project: Project,
+        editor: Editor,
+        changeId: String,
+        workspace: String,
+        relPath: String,
+        hunkCount: Int
+    ): javax.swing.JComponent {
+        val panel = javax.swing.JPanel(BorderLayout())
+        panel.border = javax.swing.BorderFactory.createCompoundBorder(
+            javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor(Color(0xD0, 0xD7, 0xDE), Color(0x38, 0x3A, 0x42))),
+            javax.swing.BorderFactory.createEmptyBorder(2, 8, 2, 8)
+        )
+        panel.background = JBColor(Color(0xF6, 0xF8, 0xFA), Color(0x2B, 0x2D, 0x30))
+
+        val leftPanel = javax.swing.JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+            isOpaque = false
+        }
+
+        val acceptAllBtn = javax.swing.JButton("✓ Accept File", AllIcons.Actions.Checked).apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            toolTipText = "Accept all changes in this file (Ctrl+Alt+A)"
+            addActionListener { decideCurrentFile(project, editor, "accept") }
+        }
+        leftPanel.add(acceptAllBtn)
+
+        val rejectAllBtn = javax.swing.JButton("✕ Reject File", AllIcons.Actions.Cancel).apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            toolTipText = "Reject all changes in this file (Ctrl+Alt+Z)"
+            addActionListener { decideCurrentFile(project, editor, "reject") }
+        }
+        leftPanel.add(rejectAllBtn)
+
+        val nextBtn = javax.swing.JButton("↓ Next Hunk", AllIcons.Actions.MoveDown).apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            toolTipText = "Jump to next pending change (Alt+Down)"
+            addActionListener { scrollToNextHunk(editor) }
+        }
+        leftPanel.add(nextBtn)
+
+        val prevBtn = javax.swing.JButton("↑ Prev Hunk", AllIcons.Actions.MoveUp).apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            toolTipText = "Jump to previous pending change (Alt+Up)"
+            addActionListener { scrollToPrevHunk(editor) }
+        }
+        leftPanel.add(prevBtn)
+
+        val diffBtn = javax.swing.JButton("Diff", AllIcons.Actions.Diff).apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            toolTipText = "Compare with baseline in side-by-side Diff Viewer"
+            addActionListener {
+                val hubManager = project.getService(HubManager::class.java)
+                val summary = hubManager.findChange(relPath)
+                if (summary != null) {
+                    ReviewHubDiffViewer.showDiff(project, summary)
+                }
+            }
+        }
+        leftPanel.add(diffBtn)
+
+        panel.add(leftPanel, BorderLayout.WEST)
+
+        val rightPanel = javax.swing.JPanel(FlowLayout(FlowLayout.RIGHT, 8, 2)).apply {
+            isOpaque = false
+        }
+        val statusBadge = javax.swing.JLabel("$hunkCount pending  •  Alt+A Accept  Alt+R Reject").apply {
+            font = font.deriveFont(11f)
+            foreground = SEPARATOR_COLOR
+        }
+        rightPanel.add(statusBadge)
+        panel.add(rightPanel, BorderLayout.EAST)
+
+        return panel
+    }
+
     private fun decideHunk(
         project: Project,
         changeId: String,
@@ -555,20 +722,14 @@ object ReviewHubInlineReview {
         val hunkKey = "$changeId:$hunkId"
         if (!inFlightHunks.add(hunkKey)) return
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: run {
-            inFlightHunks.remove(hunkKey)
-            return
-        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 if (kind == "accept") {
-                    client.accept(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
+                    hubManager.acceptChange(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
                 } else {
-                    client.reject(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
+                    hubManager.rejectChange(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
                 }
-
-                hubManager.refresh()
 
                 ApplicationManager.getApplication().invokeLater {
                     try {
@@ -604,6 +765,7 @@ object ReviewHubInlineReview {
         val indentText: String,
         val hunkId: String,
         val hunkNumber: Int,
+        val totalHunks: Int = 1,
         val onAccept: () -> Unit,
         val onReject: () -> Unit
     ) : EditorCustomElementRenderer {
@@ -626,7 +788,8 @@ object ReviewHubInlineReview {
         override fun calcWidthInPixels(inlay: Inlay<*>): Int {
             val font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
             val fm = editor.contentComponent.getFontMetrics(font)
-            return fm.stringWidth("$indentText✓Accept | ✕Reject   ")
+            val badge = if (totalHunks > 1) "   #$hunkNumber/$totalHunks" else ""
+            return fm.stringWidth("$indentText✓Accept | ✕Reject$badge   ")
         }
 
         override fun calcHeightInPixels(inlay: Inlay<*>): Int {
@@ -636,6 +799,7 @@ object ReviewHubInlineReview {
         override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
             val g2 = g.create() as Graphics2D
             try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
                 g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
                 val font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
                 g2.font = font
@@ -651,8 +815,14 @@ object ReviewHubInlineReview {
                 // 2. "✓Accept"
                 val acceptStr = "✓Accept"
                 val acceptWidth = fm.stringWidth(acceptStr)
+                val pillY = targetRegion.y + 1
+                val pillH = (targetRegion.height - 2).coerceAtLeast(14)
                 acceptBounds = Rectangle(curX - 6, targetRegion.y - 2, acceptWidth + 12, targetRegion.height + 4)
 
+                if (hoveredAccept) {
+                    g2.color = ACCEPT_PILL_BG
+                    g2.fillRoundRect(curX - 5, pillY, acceptWidth + 10, pillH, 6, 6)
+                }
                 g2.color = if (hoveredAccept) ACCEPT_HOVER_COLOR else ACCEPT_COLOR
                 g2.drawString(acceptStr, curX, baseline)
                 curX += acceptWidth
@@ -669,8 +839,20 @@ object ReviewHubInlineReview {
                 val rejectWidth = fm.stringWidth(rejectStr)
                 rejectBounds = Rectangle(curX - 6, targetRegion.y - 2, rejectWidth + 12, targetRegion.height + 4)
 
+                if (hoveredReject) {
+                    g2.color = REJECT_PILL_BG
+                    g2.fillRoundRect(curX - 5, pillY, rejectWidth + 10, pillH, 6, 6)
+                }
                 g2.color = if (hoveredReject) REJECT_HOVER_COLOR else REJECT_COLOR
                 g2.drawString(rejectStr, curX, baseline)
+                curX += rejectWidth
+
+                // 5. Optional hunk counter "#1/3"
+                if (totalHunks > 1) {
+                    val badgeStr = "   #$hunkNumber/$totalHunks"
+                    g2.color = SEPARATOR_COLOR
+                    g2.drawString(badgeStr, curX, baseline)
+                }
             } finally {
                 g2.dispose()
             }

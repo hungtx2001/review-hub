@@ -95,7 +95,8 @@ class ChangeStore {
                 removed = removed,
                 accepted = accepted,
                 rejected = rejected,
-                pending = pending
+                pending = pending,
+                updatedAt = cs.updatedAt
             )
         }
     }

@@ -31,7 +31,7 @@ class RejectAllAction : AnAction() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val pendingFiles = hubManager.changes
             for (change in pendingFiles) {
-                client.reject(changeId = change.id, workspace = workspace)
+                hubManager.rejectChange(changeId = change.id, workspace = workspace)
             }
             hubManager.refresh()
             ApplicationManager.getApplication().invokeLater {

@@ -22,7 +22,7 @@ object ReviewHubDiffViewer {
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val changeSet = client.getChange(summary.id, workspace)
+            val changeSet = hubManager.getChangeSet(summary.id, workspace)
             if (changeSet == null) {
                 ApplicationManager.getApplication().invokeLater {
                     Messages.showErrorDialog(project, "Could not fetch diff for ${summary.path}", "Review Hub")

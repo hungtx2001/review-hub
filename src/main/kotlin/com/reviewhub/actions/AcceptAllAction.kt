@@ -31,7 +31,7 @@ class AcceptAllAction : AnAction() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val pendingFiles = hubManager.changes
             for (change in pendingFiles) {
-                client.accept(changeId = change.id, workspace = workspace)
+                hubManager.acceptChange(changeId = change.id, workspace = workspace)
             }
             hubManager.refresh()
             ApplicationManager.getApplication().invokeLater {

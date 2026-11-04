@@ -44,7 +44,8 @@ data class ChangeSummary(
     val removed: Int = 0,
     val accepted: Int = 0,
     val rejected: Int = 0,
-    val pending: Int = 0
+    val pending: Int = 0,
+    val updatedAt: Long = 0
 )
 
 @Serializable
