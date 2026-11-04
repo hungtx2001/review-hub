@@ -3,6 +3,7 @@ package com.reviewhub.server
 import com.reviewhub.core.ChangeStore
 import com.reviewhub.model.*
 import com.reviewhub.util.FuzzyMatchUtil
+import com.reviewhub.util.ReviewHubPaths
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
@@ -564,8 +565,7 @@ class ReviewHubServer(
     }
 
     private fun writeHubJson() {
-        val home = System.getProperty("user.home") ?: return
-        val hubFile = Paths.get(home, ".review-hub", "hub.json").toFile()
+        val hubFile = ReviewHubPaths.getHubJsonFile()
         try {
             hubFile.parentFile?.mkdirs()
             val entry = HubEntry(
@@ -580,8 +580,7 @@ class ReviewHubServer(
     }
 
     private fun removeHubJson() {
-        val home = System.getProperty("user.home") ?: return
-        val hubFile = Paths.get(home, ".review-hub", "hub.json").toFile()
+        val hubFile = ReviewHubPaths.getHubJsonFile()
         if (hubFile.exists()) {
             try { hubFile.delete() } catch (_: Exception) {}
         }

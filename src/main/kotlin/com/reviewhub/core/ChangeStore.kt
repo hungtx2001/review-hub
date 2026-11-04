@@ -2,6 +2,7 @@ package com.reviewhub.core
 
 import com.reviewhub.model.*
 import com.reviewhub.util.PathUtil
+import com.reviewhub.util.ReviewHubPaths
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -19,6 +20,31 @@ class ChangeStore {
 
     // workspacePath -> CheckpointRecord
     private val checkpoints = ConcurrentHashMap<String, CheckpointRecord>()
+    private val loadedWorkspaces = ConcurrentHashMap.newKeySet<String>()
+
+    fun ensureWorkspaceLoaded(workspace: String) {
+        val normWs = normalizeWorkspace(workspace)
+        if (!loadedWorkspaces.add(normWs)) return
+        val dir = getWorkspaceDir(normWs)
+        val cpFile = File(dir, "checkpoint.json")
+        if (cpFile.exists()) {
+            try {
+                val cp = json.decodeFromString<CheckpointRecord>(cpFile.readText(Charsets.UTF_8))
+                checkpoints[cp.workspace] = cp
+            } catch (_: Exception) {}
+        }
+        val stagingFile = File(dir, "staging.json")
+        if (stagingFile.exists()) {
+            try {
+                val changes = json.decodeFromString<List<ChangeSet>>(stagingFile.readText(Charsets.UTF_8))
+                for (cs in changes) {
+                    val csNormWs = normalizeWorkspace(cs.workspace)
+                    val wsMap = changesByWorkspace.computeIfAbsent(csNormWs) { ConcurrentHashMap() }
+                    wsMap[cs.id] = cs
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     private val listeners = mutableListOf<(workspace: String, path: String) -> Unit>()
 
@@ -47,6 +73,7 @@ class ChangeStore {
 
     fun listChanges(workspace: String): List<ChangeSummary> {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val wsChanges = changesByWorkspace[normWs] ?: return emptyList()
 
         return wsChanges.values.map { cs ->
@@ -76,6 +103,7 @@ class ChangeStore {
     fun getChange(changeId: String, workspace: String? = null): ChangeSet? {
         if (workspace != null) {
             val normWs = normalizeWorkspace(workspace)
+            ensureWorkspaceLoaded(normWs)
             val found = changesByWorkspace[normWs]?.get(changeId)
             if (found != null) return found
         }
@@ -89,6 +117,7 @@ class ChangeStore {
 
     fun findChangeByPath(workspace: String, relPath: String): ChangeSet? {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val normRel = PathUtil.toRelativePathString(relPath)
         val wsChanges = changesByWorkspace[normWs] ?: return null
         return wsChanges.values.firstOrNull { PathUtil.pathsMatch(it.path, normRel) }
@@ -96,6 +125,7 @@ class ChangeStore {
 
     fun propose(workspace: String, relPath: String, content: String): ChangeSet {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val normRel = PathUtil.toRelativePathString(relPath)
         val absFile = File(normWs, normRel)
 
@@ -447,17 +477,14 @@ class ChangeStore {
     }
 
     private fun getOrCreateCheckpoint(workspace: String): CheckpointRecord {
+        ensureWorkspaceLoaded(workspace)
         return checkpoints.computeIfAbsent(workspace) {
             CheckpointRecord(workspace, System.currentTimeMillis(), mutableMapOf())
         }
     }
 
     private fun getWorkspaceDir(workspace: String): File {
-        val home = System.getProperty("user.home") ?: "."
-        val wsHash = sha256(workspace).take(16)
-        val dir = Paths.get(home, ".review-hub", "workspaces", wsHash).toFile()
-        dir.mkdirs()
-        return dir
+        return ReviewHubPaths.getWorkspaceDir(workspace, sha256(workspace).take(16))
     }
 
     private fun getBaselinesDir(workspace: String): File {
@@ -521,8 +548,8 @@ class ChangeStore {
     }
 
     private fun loadPersistedState() {
-        val home = System.getProperty("user.home") ?: return
-        val root = Paths.get(home, ".review-hub", "workspaces").toFile()
+        val tmpDir = System.getProperty("java.io.tmpdir") ?: "."
+        val root = Paths.get(tmpDir, "review-hub", "workspaces").toFile()
         if (!root.exists() || !root.isDirectory) return
 
         val wsFolders = root.listFiles() ?: return

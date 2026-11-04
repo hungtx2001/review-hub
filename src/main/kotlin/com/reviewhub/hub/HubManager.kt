@@ -18,6 +18,7 @@ import com.reviewhub.model.ChangeSummary
 import com.reviewhub.model.HubEntry
 import com.reviewhub.server.ReviewHubServer
 import com.reviewhub.util.PathUtil
+import com.reviewhub.util.ReviewHubPaths
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.nio.file.Paths
@@ -236,8 +237,7 @@ class HubManager(private val project: Project) : Disposable {
     }
 
     private fun getHubJsonFile(): File? {
-        val home = System.getProperty("user.home") ?: return null
-        val hubJson = Paths.get(home, ".review-hub", "hub.json").toFile()
+        val hubJson = ReviewHubPaths.getHubJsonFile()
         return if (hubJson.exists()) hubJson else null
     }
 
