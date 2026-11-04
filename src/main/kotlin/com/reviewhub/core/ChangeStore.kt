@@ -115,33 +115,34 @@ class ChangeStore {
         return null
     }
 
+    fun registerWorkspace(workspace: String) {
+        val normWs = normalizeWorkspace(workspace)
+        if (normWs.isEmpty()) return
+        ensureWorkspaceLoaded(normWs)
+        changesByWorkspace.computeIfAbsent(normWs) { ConcurrentHashMap() }
+    }
+
     fun findChangeByPath(workspace: String, relPath: String): ChangeSet? {
         val normWs = normalizeWorkspace(workspace)
         ensureWorkspaceLoaded(normWs)
-        val normRel = PathUtil.toRelativePathString(relPath)
+        val normRel = PathUtil.toWorkspaceRelativePath(normWs, relPath)
         val wsChanges = changesByWorkspace[normWs] ?: return null
         return wsChanges.values.firstOrNull { PathUtil.pathsMatch(it.path, normRel) }
     }
 
-    fun propose(workspace: String, relPath: String, content: String): ChangeSet {
+    fun propose(
+        workspace: String,
+        relPath: String,
+        content: String,
+        proposedExists: Boolean = true
+    ): ChangeSet {
         val normWs = normalizeWorkspace(workspace)
         ensureWorkspaceLoaded(normWs)
-        val normRel = PathUtil.toRelativePathString(relPath)
+        val normRel = PathUtil.toWorkspaceRelativePath(normWs, relPath)
         val absFile = File(normWs, normRel)
 
-        // Baseline resolution
+        val existing = findChangeByPath(normWs, normRel)
         val cp = getOrCreateCheckpoint(normWs)
-        val baselineContent = if (cp.files.containsKey(normRel)) {
-            readBaselineBlob(normWs, cp.files[normRel]!!)
-        } else if (absFile.exists() && !absFile.isDirectory) {
-            val diskContent = try { absFile.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
-            val hash = putBaselineBlob(normWs, diskContent)
-            cp.files[normRel] = hash
-            persistCheckpoint(normWs)
-            diskContent
-        } else {
-            ""
-        }
 
         // Snapshot initial state before AI modifications for Rollback
         if (!cp.initialSnapshots.containsKey(normRel)) {
@@ -155,10 +156,44 @@ class ChangeStore {
             persistCheckpoint(normWs)
         }
 
-        val baselineExists = absFile.exists()
-        val hunks = HunkDiff.computeHunks(baselineContent, content)
+        val baselineExists = existing?.baselineExists
+            ?: (cp.files.containsKey(normRel) || (absFile.exists() && !absFile.isDirectory))
 
-        val existing = findChangeByPath(normWs, normRel)
+        // Baseline resolution: preserve any already-decided hunks from existing staged change
+        val baselineContent = if (existing != null && existing.hunks.any { it.decision != "pending" }) {
+            val resolvedPartial = HunkDiff.resolve(existing.baseline, existing.hunks)
+            val hash = putBaselineBlob(normWs, resolvedPartial)
+            cp.files[normRel] = hash
+            persistCheckpoint(normWs)
+            resolvedPartial
+        } else if (cp.files.containsKey(normRel)) {
+            readBaselineBlob(normWs, cp.files[normRel]!!)
+        } else if (absFile.exists() && !absFile.isDirectory) {
+            val diskContent = try { absFile.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
+            val hash = putBaselineBlob(normWs, diskContent)
+            cp.files[normRel] = hash
+            persistCheckpoint(normWs)
+            diskContent
+        } else {
+            ""
+        }
+
+        val computedHunks = HunkDiff.computeHunks(baselineContent, content)
+        val hunks = if (!proposedExists && computedHunks.isEmpty()) {
+            listOf(
+                Hunk(
+                    id = "hunk-1",
+                    oldStart = 0,
+                    oldLines = emptyList(),
+                    newStart = 0,
+                    newLines = emptyList(),
+                    decision = "pending"
+                )
+            )
+        } else {
+            computedHunks
+        }
+
         val changeId = existing?.id ?: "cs-" + sha256("$normWs:$normRel").take(12)
 
         val changeSet = ChangeSet(
@@ -172,7 +207,7 @@ class ChangeStore {
             baseline = baselineContent,
             proposed = content,
             baselineExists = baselineExists,
-            proposedExists = true,
+            proposedExists = proposedExists,
             hunks = hunks,
             status = "pending",
             createdAt = existing?.createdAt ?: System.currentTimeMillis(),
@@ -194,6 +229,17 @@ class ChangeStore {
         hunkIds: List<String>? = null,
         customContent: String? = null
     ): DecideResult? {
+        if (changeId.isNullOrEmpty() && path.isNullOrEmpty() && !workspace.isNullOrEmpty()) {
+            val normWs = normalizeWorkspace(workspace)
+            ensureWorkspaceLoaded(normWs)
+            val allIds = changesByWorkspace[normWs]?.keys?.toList() ?: emptyList()
+            var lastResult: DecideResult? = null
+            for (id in allIds) {
+                lastResult = accept(changeId = id, workspace = normWs)
+            }
+            return lastResult ?: DecideResult(changeId = "all", status = "applied", resolved = true, remaining = 0)
+        }
+
         val cs = resolveTargetChangeSet(changeId, workspace, path) ?: return null
         val normWs = cs.workspace
 
@@ -206,19 +252,32 @@ class ChangeStore {
         }
 
         val allDecided = updatedHunks.none { it.decision == "pending" }
+        val allAccepted = updatedHunks.all { it.decision == "accepted" }
+        val isDeletion = !cs.proposedExists && allAccepted
+
         val resolvedContent = if (customContent != null && allDecided) {
-            customContent
+            if (cs.baseline.contains("\r\n") && !customContent.contains("\r\n")) {
+                customContent.replace("\n", "\r\n")
+            } else {
+                customContent
+            }
         } else {
             HunkDiff.resolve(cs.baseline, updatedHunks)
         }
 
-        // Write accepted content to disk
+        // Write accepted content to disk (or delete file if proposed deletion was accepted)
         val absFile = File(cs.absPath ?: File(normWs, cs.path).absolutePath)
-        try {
-            absFile.parentFile?.mkdirs()
-            absFile.writeText(resolvedContent, Charsets.UTF_8)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        if (allDecided && isDeletion) {
+            if (absFile.exists()) {
+                try { absFile.delete() } catch (_: Exception) {}
+            }
+        } else {
+            try {
+                absFile.parentFile?.mkdirs()
+                absFile.writeText(resolvedContent, Charsets.UTF_8)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         val newStatus = if (allDecided) "applied" else "pending"
@@ -234,7 +293,11 @@ class ChangeStore {
             wsMap?.remove(cs.id)
             // Advance baseline in checkpoint
             val cp = getOrCreateCheckpoint(normWs)
-            cp.files[cs.path] = putBaselineBlob(normWs, resolvedContent)
+            if (isDeletion) {
+                cp.files.remove(cs.path)
+            } else {
+                cp.files[cs.path] = putBaselineBlob(normWs, resolvedContent)
+            }
             persistCheckpoint(normWs)
         } else {
             wsMap?.put(cs.id, updatedCs)
@@ -254,6 +317,17 @@ class ChangeStore {
     }
 
     fun reject(changeId: String? = null, workspace: String? = null, path: String? = null, hunkIds: List<String>? = null): DecideResult? {
+        if (changeId.isNullOrEmpty() && path.isNullOrEmpty() && !workspace.isNullOrEmpty()) {
+            val normWs = normalizeWorkspace(workspace)
+            ensureWorkspaceLoaded(normWs)
+            val allIds = changesByWorkspace[normWs]?.keys?.toList() ?: emptyList()
+            var lastResult: DecideResult? = null
+            for (id in allIds) {
+                lastResult = reject(changeId = id, workspace = normWs)
+            }
+            return lastResult ?: DecideResult(changeId = "all", status = "rejected", resolved = true, remaining = 0)
+        }
+
         val cs = resolveTargetChangeSet(changeId, workspace, path) ?: return null
         val normWs = cs.workspace
 
@@ -266,11 +340,12 @@ class ChangeStore {
         }
 
         val allDecided = updatedHunks.none { it.decision == "pending" }
+        val anyAccepted = updatedHunks.any { it.decision == "accepted" }
         val resolvedContent = HunkDiff.resolve(cs.baseline, updatedHunks)
 
         // Write resolved (restored baseline) to disk if file was previously modified
         val absFile = File(cs.absPath ?: File(normWs, cs.path).absolutePath)
-        if (allDecided && !cs.baselineExists) {
+        if (allDecided && !cs.baselineExists && !anyAccepted) {
             if (absFile.exists()) absFile.delete()
         } else {
             try {
@@ -289,6 +364,11 @@ class ChangeStore {
         val wsMap = changesByWorkspace[normWs]
         if (allDecided) {
             wsMap?.remove(cs.id)
+            if (anyAccepted) {
+                val cp = getOrCreateCheckpoint(normWs)
+                cp.files[cs.path] = putBaselineBlob(normWs, resolvedContent)
+                persistCheckpoint(normWs)
+            }
         } else {
             wsMap?.put(cs.id, updatedCs)
         }
@@ -308,15 +388,19 @@ class ChangeStore {
 
     fun readFile(workspace: String, relPath: String): String {
         val normWs = normalizeWorkspace(workspace)
-        val normRel = PathUtil.toRelativePathString(relPath)
+        ensureWorkspaceLoaded(normWs)
+        val normRel = PathUtil.toWorkspaceRelativePath(normWs, relPath)
 
         val active = findChangeByPath(normWs, normRel)
         if (active != null) {
+            if (!active.proposedExists && active.hunks.none { it.decision == "rejected" }) {
+                return ""
+            }
             return HunkDiff.resolveStaged(active.baseline, active.hunks)
         }
 
         val file = File(normWs, normRel)
-        return if (file.exists()) {
+        return if (file.exists() && !file.isDirectory) {
             try { file.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
         } else {
             ""
@@ -325,6 +409,7 @@ class ChangeStore {
 
     fun setCheckpoint(workspace: String): CheckpointInfo {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val wsDir = File(normWs)
         val fileMap = mutableMapOf<String, String>()
 
@@ -374,6 +459,7 @@ class ChangeStore {
 
     fun rollbackToCheckpoint(workspace: String): List<String> {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val cp = checkpoints[normWs] ?: return emptyList()
         val restoredFiles = mutableListOf<String>()
 
@@ -408,6 +494,7 @@ class ChangeStore {
 
     fun getReviewStatus(workspace: String, path: String? = null, changeId: String? = null): ReviewStatusResult {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val cs = resolveTargetChangeSet(changeId, normWs, path)
         if (cs == null) {
             val wsChanges = changesByWorkspace[normWs]?.values?.toList() ?: emptyList()
@@ -449,6 +536,7 @@ class ChangeStore {
 
     fun clearCheckpoint(workspace: String): Boolean {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         checkpoints.remove(normWs)
         changesByWorkspace[normWs]?.clear()
 
@@ -460,6 +548,7 @@ class ChangeStore {
 
     fun checkpointInfo(workspace: String): CheckpointInfo? {
         val normWs = normalizeWorkspace(workspace)
+        ensureWorkspaceLoaded(normWs)
         val cp = checkpoints[normWs] ?: return null
         return CheckpointInfo(normWs, cp.setAt)
     }

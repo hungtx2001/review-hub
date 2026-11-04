@@ -45,13 +45,8 @@ class HubClient(
     }
 
     fun listChanges(workspace: String): List<ChangeSummary> {
-        val candidates = PathUtil.normalizeWorkspaceCandidates(workspace)
-
-        for (ws in candidates) {
-            val list = fetchList(ws)
-            if (list.isNotEmpty()) return list
-        }
-        return emptyList()
+        val norm = PathUtil.normalizeWorkspace(workspace)
+        return fetchList(norm)
     }
 
     private fun fetchList(workspace: String): List<ChangeSummary> {

@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.reviewhub.hub.HubManager
+import com.reviewhub.inline.ReviewHubInlineReview
 
 class ClearCheckpointAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
@@ -16,9 +17,11 @@ class ClearCheckpointAction : AnAction() {
 
         ApplicationManager.getApplication().executeOnPooledThread {
             val ok = client.clearCheckpoint(workspace)
+            hubManager.refresh()
             ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
                 if (ok) {
-                    hubManager.refresh()
+                    ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
                     VirtualFileManager.getInstance().asyncRefresh(null)
                     Messages.showInfoMessage(project, "Checkpoint cleared.", "Review Hub")
                 } else {

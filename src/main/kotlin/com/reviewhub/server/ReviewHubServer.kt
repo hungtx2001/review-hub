@@ -3,6 +3,7 @@ package com.reviewhub.server
 import com.reviewhub.core.ChangeStore
 import com.reviewhub.model.*
 import com.reviewhub.util.FuzzyMatchUtil
+import com.reviewhub.util.PathUtil
 import com.reviewhub.util.ReviewHubPaths
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
@@ -25,6 +26,7 @@ class ReviewHubServer(
     private val workspacePath: String? = null
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; isLenient = true }
+    private val compactJson = Json { prettyPrint = false; ignoreUnknownKeys = true; isLenient = true }
     private var server: HttpServer? = null
     var port: Int = preferredPort
         private set
@@ -35,6 +37,9 @@ class ReviewHubServer(
     private val sseSessions = ConcurrentHashMap<String, HttpExchange>()
 
     fun start(): Int {
+        if (!workspacePath.isNullOrBlank()) {
+            store.registerWorkspace(workspacePath)
+        }
         var boundPort = preferredPort
         var createdServer: HttpServer? = null
 
@@ -64,6 +69,10 @@ class ReviewHubServer(
     }
 
     fun stop() {
+        for ((_, session) in sseSessions) {
+            try { session.close() } catch (_: Exception) {}
+        }
+        sseSessions.clear()
         server?.stop(0)
         server = null
         removeHubJson()
@@ -93,6 +102,9 @@ class ReviewHubServer(
         srv.createContext("/changes/list") { exchange ->
             val params = parseQueryParams(exchange.requestURI.query)
             val ws = params["workspace"] ?: workspacePath ?: ""
+            if (ws.isNotBlank()) {
+                store.registerWorkspace(ws)
+            }
             val changes = store.listChanges(ws)
             sendJson(exchange, 200, json.encodeToJsonElement(ListChangesResponse(changes)))
         }
@@ -113,10 +125,12 @@ class ReviewHubServer(
             if (exchange.requestMethod.equals("POST", ignoreCase = true)) {
                 val body = readRequestBody(exchange)
                 val obj = json.parseToJsonElement(body).jsonObject
-                val ws = obj["workspace"]?.jsonPrimitive?.content ?: workspacePath ?: ""
-                val path = obj["path"]?.jsonPrimitive?.content ?: ""
+                val rawWs = obj["workspace"]?.jsonPrimitive?.contentOrNull
+                val rawPath = obj["path"]?.jsonPrimitive?.content ?: ""
                 val content = obj["content"]?.jsonPrimitive?.content ?: ""
-                val cs = store.propose(ws, path, content)
+                val proposedExists = obj["proposedExists"]?.jsonPrimitive?.booleanOrNull ?: true
+                val (ws, path) = resolveWorkspaceAndPath(rawWs, rawPath)
+                val cs = store.propose(ws, path, content, proposedExists)
                 sendJson(exchange, 200, buildJsonObject {
                     put("changeId", cs.id)
                     put("path", cs.path)
@@ -273,8 +287,32 @@ class ReviewHubServer(
         val id = requestElement["id"]
         val method = requestElement["method"]?.jsonPrimitive?.content ?: ""
         val params = requestElement["params"]?.jsonObject ?: JsonObject(emptyMap())
+        val queryParams = parseQueryParams(exchange.requestURI.query)
+        val sessionId = queryParams["sessionId"]
+
+        if (id == null && method.startsWith("notifications/")) {
+            exchange.sendResponseHeaders(202, -1)
+            exchange.close()
+            return
+        }
 
         val responseJson = processMcpMethod(id, method, params)
+
+        if (sessionId != null) {
+            val sseExchange = sseSessions[sessionId]
+            if (sseExchange != null) {
+                try {
+                    val sseData = "event: message\ndata: ${compactJson.encodeToString(responseJson)}\n\n"
+                    synchronized(sseExchange) {
+                        sseExchange.responseBody.write(sseData.toByteArray(StandardCharsets.UTF_8))
+                        sseExchange.responseBody.flush()
+                    }
+                } catch (_: Exception) {
+                    sseSessions.remove(sessionId)
+                    try { sseExchange.close() } catch (_: Exception) {}
+                }
+            }
+        }
 
         sendJson(exchange, 200, responseJson)
     }
@@ -321,7 +359,8 @@ class ReviewHubServer(
                                     "path" to "string",
                                     "old_string" to "string",
                                     "new_string" to "string",
-                                    "replace_all" to "boolean"
+                                    "replace_all" to "boolean",
+                                    "workspace" to "string"
                                 ),
                                 listOf("path", "old_string", "new_string")
                             ))
@@ -330,7 +369,8 @@ class ReviewHubServer(
                                 "Propose creating or overwriting a file (staged for review in JetBrains IDE).",
                                 mapOf(
                                     "path" to "string",
-                                    "content" to "string"
+                                    "content" to "string",
+                                    "workspace" to "string"
                                 ),
                                 listOf("path", "content")
                             ))
@@ -338,14 +378,18 @@ class ReviewHubServer(
                                 "propose_delete",
                                 "Propose deleting a file (staged for review in JetBrains IDE).",
                                 mapOf(
-                                    "path" to "string"
+                                    "path" to "string",
+                                    "workspace" to "string"
                                 ),
                                 listOf("path")
                             ))
                             add(toolSchema(
                                 "read_file",
                                 "Read a file through the staged review state.",
-                                mapOf("path" to "string"),
+                                mapOf(
+                                    "path" to "string",
+                                    "workspace" to "string"
+                                ),
                                 listOf("path")
                             ))
                             add(toolSchema(
@@ -357,19 +401,19 @@ class ReviewHubServer(
                             add(toolSchema(
                                 "get_change",
                                 "Inspect detailed hunks and unified diff for any pending change.",
-                                mapOf("changeId" to "string"),
+                                mapOf("changeId" to "string", "workspace" to "string"),
                                 listOf("changeId")
                             ))
                             add(toolSchema(
                                 "accept",
                                 "Accept specific hunks or entire files (writes to disk).",
-                                mapOf("changeId" to "string", "path" to "string"),
+                                mapOf("changeId" to "string", "path" to "string", "workspace" to "string"),
                                 emptyList()
                             ))
                             add(toolSchema(
                                 "reject",
                                 "Reject specific hunks or revert files to baseline.",
-                                mapOf("changeId" to "string", "path" to "string"),
+                                mapOf("changeId" to "string", "path" to "string", "workspace" to "string"),
                                 emptyList()
                             ))
                             add(toolSchema(
@@ -439,9 +483,49 @@ class ReviewHubServer(
         }
     }
 
+    private fun resolveWorkspaceAndPath(explicitWs: String?, rawPath: String): Pair<String, String> {
+        val candidates = (store.listWorkspaces() + listOfNotNull(workspacePath))
+            .map { PathUtil.normalizeWorkspace(it) }
+            .filter { it.isNotEmpty() }
+            .distinct()
+
+        if (!explicitWs.isNullOrBlank()) {
+            val normWs = PathUtil.normalizeWorkspace(explicitWs)
+            return Pair(normWs, PathUtil.toWorkspaceRelativePath(normWs, rawPath))
+        }
+
+        if (rawPath.isNotBlank()) {
+            // 1. Check if rawPath is an absolute path inside one of the known workspaces
+            for (ws in candidates.sortedByDescending { it.length }) {
+                val rel = PathUtil.toRelativePath(ws, rawPath)
+                if (rel != null) {
+                    return Pair(ws, rel)
+                }
+            }
+
+            // 2. Check if rawPath matches an active staged change or existing file in a known workspace
+            val defaultWs = PathUtil.normalizeWorkspace(workspacePath ?: candidates.firstOrNull() ?: "")
+            if (candidates.size > 1) {
+                val matchedWs = candidates.firstOrNull { ws ->
+                    store.findChangeByPath(ws, rawPath) != null
+                } ?: candidates.firstOrNull { ws ->
+                    File(ws, PathUtil.toWorkspaceRelativePath(ws, rawPath)).exists()
+                }
+                if (matchedWs != null) {
+                    return Pair(matchedWs, PathUtil.toWorkspaceRelativePath(matchedWs, rawPath))
+                }
+            }
+            return Pair(defaultWs, PathUtil.toWorkspaceRelativePath(defaultWs, rawPath))
+        }
+
+        val fallbackWs = PathUtil.normalizeWorkspace(workspacePath ?: candidates.firstOrNull() ?: "")
+        return Pair(fallbackWs, "")
+    }
+
     private fun executeMcpTool(name: String, args: JsonObject): String {
-        val targetWs = args["workspace"]?.jsonPrimitive?.content ?: workspacePath ?: ""
-        val targetPath = args["path"]?.jsonPrimitive?.content ?: ""
+        val explicitWs = args["workspace"]?.jsonPrimitive?.contentOrNull
+        val rawPath = args["path"]?.jsonPrimitive?.contentOrNull ?: ""
+        val (targetWs, targetPath) = resolveWorkspaceAndPath(explicitWs, rawPath)
 
         return when (name) {
             "propose_edit" -> {
@@ -458,7 +542,7 @@ class ReviewHubServer(
                     })
                 }
 
-                val cs = store.propose(targetWs, targetPath, replaced)
+                val cs = store.propose(targetWs, targetPath, replaced, proposedExists = true)
                 json.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
@@ -468,7 +552,7 @@ class ReviewHubServer(
 
             "propose_write" -> {
                 val content = args["content"]?.jsonPrimitive?.content ?: ""
-                val cs = store.propose(targetWs, targetPath, content)
+                val cs = store.propose(targetWs, targetPath, content, proposedExists = true)
                 json.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
@@ -477,7 +561,7 @@ class ReviewHubServer(
             }
 
             "propose_delete" -> {
-                val cs = store.propose(targetWs, targetPath, "")
+                val cs = store.propose(targetWs, targetPath, "", proposedExists = false)
                 json.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
                     put("changeId", cs.id)

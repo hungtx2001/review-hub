@@ -43,5 +43,16 @@ class FuzzyMatchUtilTest {
         val replaced = FuzzyMatchUtil.findAndReplace(original, "completely nonexistent string", "new")
         assertNull(replaced)
     }
+
+    @Test
+    fun `fuzzy line matching supports replaceAll`() {
+        val original = "fun a() {\n    println(\"hi\")\n}\nfun b() {\n    println(\"hi\")\n}"
+        val oldTrimmed = "  println(\"hi\")"
+        val newContent = "  println(\"hello\")"
+
+        val replaced = FuzzyMatchUtil.findAndReplace(original, oldTrimmed, newContent, replaceAll = true)
+        assertNotNull(replaced)
+        assertEquals("fun a() {\n    println(\"hello\")\n}\nfun b() {\n    println(\"hello\")\n}", replaced)
+    }
 }
 

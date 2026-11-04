@@ -77,5 +77,15 @@ class HunkDiffTest {
         val resolved = HunkDiff.resolve(base, decidedHunks)
         assertEquals("line 1\nmodified 2\nline 3\nline 4", resolved)
     }
+
+    @Test
+    fun `resolve preserves CRLF line endings from baseline`() {
+        val base = "line 1\r\nline 2\r\nline 3"
+        val prop = "line 1\r\nmodified 2\r\nline 3"
+        val hunks = HunkDiff.computeHunks(base, prop).map { it.copy(decision = "accepted") }
+
+        val resolved = HunkDiff.resolve(base, hunks)
+        assertEquals("line 1\r\nmodified 2\r\nline 3", resolved)
+    }
 }
 

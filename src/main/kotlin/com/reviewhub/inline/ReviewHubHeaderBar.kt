@@ -105,7 +105,12 @@ class ReviewHubHeaderBar(
         }
 
         if (hunksPending > 1) {
-            val nextHunkBtn = createButton("▼ Next", null) {
+            val prevHunkBtn = createButton("↑ Prev Hunk", AllIcons.Actions.MoveUp) {
+                ReviewHubInlineReview.scrollToPrevHunk(editor)
+            }
+            rightPanel.add(prevHunkBtn)
+
+            val nextHunkBtn = createButton("↓ Next Hunk", AllIcons.Actions.MoveDown) {
                 ReviewHubInlineReview.scrollToNextHunk(editor)
             }
             rightPanel.add(nextHunkBtn)
@@ -115,8 +120,9 @@ class ReviewHubHeaderBar(
         val acceptFileBtn = createButton("Accept File", AllIcons.Actions.Checked) {
             if (currentChange == null) return@createButton
             val client = hubManager.client ?: return@createButton
+            val customText = ReviewHubInlineReview.extractResolvedContent(editor)
             ApplicationManager.getApplication().executeOnPooledThread {
-                client.accept(changeId = currentChange.id, workspace = basePath)
+                client.accept(changeId = currentChange.id, workspace = basePath, customContent = customText)
                 hubManager.refresh()
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater
@@ -124,6 +130,9 @@ class ReviewHubHeaderBar(
                     val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
                     if (vf != null && vf.isValid) {
                         ReviewHubInlineReview.clearFileReview(project, vf)
+                        if (!file.exists()) {
+                            FileEditorManager.getInstance(project).closeFile(vf)
+                        }
                     }
                     VirtualFileManager.getInstance().asyncRefresh(null)
                     val remaining = hubManager.changes.filter { it.status != "resolved" && it.id != currentChange.id }
@@ -147,6 +156,9 @@ class ReviewHubHeaderBar(
                     val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
                     if (vf != null && vf.isValid) {
                         ReviewHubInlineReview.clearFileReview(project, vf)
+                        if (!file.exists()) {
+                            FileEditorManager.getInstance(project).closeFile(vf)
+                        }
                     }
                     VirtualFileManager.getInstance().asyncRefresh(null)
                     val remaining = hubManager.changes.filter { it.status != "resolved" && it.id != currentChange.id }
@@ -197,10 +209,7 @@ class ReviewHubHeaderBar(
     }
 
     private fun openFile(project: Project, targetRelPath: String) {
-        val basePath = project.basePath ?: return
-        val ioFile = File(basePath, targetRelPath)
-        val vf = LocalFileSystem.getInstance().findFileByIoFile(ioFile) ?: return
-        FileEditorManager.getInstance(project).openFile(vf, true)
+        ReviewHubInlineReview.openReviewFile(project, targetRelPath)
     }
 }
 

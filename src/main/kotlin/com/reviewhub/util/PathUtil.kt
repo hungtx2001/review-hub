@@ -26,11 +26,24 @@ object PathUtil {
     }
 
     fun normalizeWorkspace(workspace: String): String {
-        return workspace.replace('\\', '/').trimEnd('/')
+        val norm = workspace.replace('\\', '/').trimEnd('/')
+        if (norm.length >= 2 && norm[1] == ':' && norm[0].isLetter()) {
+            return norm[0].uppercaseChar() + norm.substring(1)
+        }
+        return norm
     }
 
     fun toRelativePathString(path: String): String {
         return path.replace('\\', '/').trimStart('/')
+    }
+
+    fun toWorkspaceRelativePath(workspace: String, path: String): String {
+        val normWs = normalizeWorkspace(workspace)
+        if (normWs.isNotEmpty()) {
+            val rel = toRelativePath(normWs, path)
+            if (rel != null) return rel
+        }
+        return toRelativePathString(path)
     }
 
     fun normalizeWorkspaceCandidates(workspace: String): List<String> {

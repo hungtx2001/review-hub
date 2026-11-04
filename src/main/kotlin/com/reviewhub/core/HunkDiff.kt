@@ -154,6 +154,8 @@ object HunkDiff {
         return edits
     }
 
+    private const val MAX_MYERS_EDIT_DISTANCE = 3500
+
     private fun myersDiffSlice(
         oldLines: List<String>,
         newLines: List<String>,
@@ -162,6 +164,9 @@ object HunkDiff {
         m: Int
     ): List<DiffEdit> {
         val maxD = n + m
+        if (maxD > MAX_MYERS_EDIT_DISTANCE * 2) {
+            return fallbackReplacementSlice(prefix, n, m)
+        }
         val vOffset = maxD
         val v = IntArray(2 * maxD + 1)
         v[vOffset + 1] = 0
@@ -169,7 +174,7 @@ object HunkDiff {
         val trace = ArrayList<IntArray>()
 
         var foundD = -1
-        for (d in 0..maxD) {
+        for (d in 0..maxD.coerceAtMost(MAX_MYERS_EDIT_DISTANCE)) {
             val vCopy = v.clone()
             trace.add(vCopy)
 
@@ -195,6 +200,10 @@ object HunkDiff {
                 }
             }
             if (foundD != -1) break
+        }
+
+        if (foundD == -1) {
+            return fallbackReplacementSlice(prefix, n, m)
         }
 
         // Traceback from (n, m)
@@ -249,7 +258,19 @@ object HunkDiff {
         return result
     }
 
+    private fun fallbackReplacementSlice(prefix: Int, n: Int, m: Int): List<DiffEdit> {
+        val result = ArrayList<DiffEdit>(n + m)
+        for (i in 0 until n) {
+            result.add(DiffEdit(EditType.DELETE, prefix + i, prefix))
+        }
+        for (j in 0 until m) {
+            result.add(DiffEdit(EditType.INSERT, prefix + n, prefix + j))
+        }
+        return result
+    }
+
     fun resolve(baseline: String, hunks: List<Hunk>): String {
+        val lineSep = if (baseline.contains("\r\n")) "\r\n" else "\n"
         val baseLines = if (baseline.isEmpty()) emptyList() else baseline.split("\n").map { it.trimEnd('\r') }
         val resultLines = mutableListOf<String>()
 
@@ -285,10 +306,11 @@ object HunkDiff {
             resultLines.addAll(baseLines.subList(baseIdx, baseLines.size))
         }
 
-        return resultLines.joinToString("\n")
+        return resultLines.joinToString(lineSep)
     }
 
     fun resolveStaged(baseline: String, hunks: List<Hunk>): String {
+        val lineSep = if (baseline.contains("\r\n")) "\r\n" else "\n"
         val baseLines = if (baseline.isEmpty()) emptyList() else baseline.split("\n").map { it.trimEnd('\r') }
         val resultLines = mutableListOf<String>()
 
@@ -320,6 +342,6 @@ object HunkDiff {
             resultLines.addAll(baseLines.subList(baseIdx, baseLines.size))
         }
 
-        return resultLines.joinToString("\n")
+        return resultLines.joinToString(lineSep)
     }
 }

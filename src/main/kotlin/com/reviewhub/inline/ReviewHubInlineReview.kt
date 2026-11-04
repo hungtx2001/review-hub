@@ -37,6 +37,7 @@ import javax.swing.Icon
 
 object ReviewHubInlineReview {
     private val HIGHLIGHTERS_KEY = Key.create<MutableList<RangeHighlighter>>("reviewhub.highlighters")
+    private val DELETED_HIGHLIGHTERS_KEY = Key.create<MutableList<RangeHighlighter>>("reviewhub.deleted_highlighters")
     private val INLAYS_KEY = Key.create<MutableList<Inlay<*>>>("reviewhub.inlays")
     private val STAGED_HASH_KEY = Key.create<String>("reviewhub.staged_hash")
     private val MOUSE_LISTENER_ATTACHED_KEY = Key.create<Boolean>("reviewhub.mouse_listener_attached")
@@ -75,7 +76,12 @@ object ReviewHubInlineReview {
                 clear(project, editor.editor, virtualFile)
             }
         }
-        reloadDocumentFromDisk(project, virtualFile)
+        val ioFile = File(virtualFile.path)
+        if (!ioFile.exists()) {
+            fileEditorManager.closeFile(virtualFile)
+        } else {
+            reloadDocumentFromDisk(project, virtualFile)
+        }
     }
 
     fun reloadAllOpenReviewEditors(project: Project) {
@@ -86,9 +92,46 @@ object ReviewHubInlineReview {
                 val rawEditor = editor.editor
                 if (rawEditor.getUserData(STAGED_HASH_KEY) != null) {
                     clear(project, rawEditor, vf)
-                } else if (vf != null && vf.isValid) {
-                    reloadDocumentFromDisk(project, vf)
                 }
+                if (vf != null && vf.isValid) {
+                    if (!File(vf.path).exists()) {
+                        fileEditorManager.closeFile(vf)
+                    } else {
+                        reloadDocumentFromDisk(project, vf)
+                    }
+                }
+            }
+        }
+    }
+
+    fun openReviewFile(project: Project, relPath: String) {
+        val basePath = project.basePath ?: return
+        val file = File(basePath, relPath)
+        val lfs = LocalFileSystem.getInstance()
+        val vf = lfs.refreshAndFindFileByIoFile(file) ?: lfs.findFileByIoFile(file)
+        if (vf != null && file.exists()) {
+            FileEditorManager.getInstance(project).openFile(vf, true)
+            return
+        }
+
+        val hubManager = project.getService(HubManager::class.java)
+        val summary = hubManager.findChange(relPath) ?: return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val client = hubManager.client ?: return@executeOnPooledThread
+            val content = client.getChange(summary.id, basePath)?.proposed ?: ""
+            try {
+                file.parentFile?.mkdirs()
+                file.writeText(content, Charsets.UTF_8)
+            } catch (_: Exception) {
+                return@executeOnPooledThread
+            }
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                val createdVf = lfs.refreshAndFindFileByIoFile(file)
+                if (createdVf != null) {
+                    FileEditorManager.getInstance(project).openFile(createdVf, true)
+                }
+                VirtualFileManager.getInstance().asyncRefresh(null)
             }
         }
     }
@@ -101,6 +144,7 @@ object ReviewHubInlineReview {
         val highlighters = editor.getUserData(HIGHLIGHTERS_KEY)
         highlighters?.forEach { editor.markupModel.removeHighlighter(it) }
         highlighters?.clear()
+        editor.getUserData(DELETED_HIGHLIGHTERS_KEY)?.clear()
 
         // 2. Remove inlays
         val inlays = editor.getUserData(INLAYS_KEY)
@@ -210,12 +254,14 @@ object ReviewHubInlineReview {
         val existingHighlighters = editor.getUserData(HIGHLIGHTERS_KEY)
         existingHighlighters?.forEach { editor.markupModel.removeHighlighter(it) }
         existingHighlighters?.clear()
+        editor.getUserData(DELETED_HIGHLIGHTERS_KEY)?.clear()
 
         val existingInlays = editor.getUserData(INLAYS_KEY)
         existingInlays?.forEach { Disposer.dispose(it) }
         existingInlays?.clear()
 
         val activeHighlighters = mutableListOf<RangeHighlighter>()
+        val deletedHighlighters = mutableListOf<RangeHighlighter>()
         val activeInlays = mutableListOf<Inlay<*>>()
 
         // Green gutter vertical bar renderer
@@ -287,15 +333,18 @@ object ReviewHubInlineReview {
 
                 if (!isDeleted) {
                     highlighter.lineMarkerRenderer = greenGutterMarker
+                } else {
+                    highlighter.isGreedyToLeft = false
+                    highlighter.isGreedyToRight = false
+                    deletedHighlighters.add(highlighter)
                 }
-
-
 
                 activeHighlighters.add(highlighter)
             }
         }
 
         editor.putUserData(HIGHLIGHTERS_KEY, activeHighlighters)
+        editor.putUserData(DELETED_HIGHLIGHTERS_KEY, deletedHighlighters)
         editor.putUserData(INLAYS_KEY, activeInlays)
 
         val hunkLines = blocksByHunk.values.mapNotNull { blocks ->
@@ -313,8 +362,8 @@ object ReviewHubInlineReview {
             }
         }
 
-        // Add header bar with Up/Down navigation and Accept/Reject buttons
-        editor.headerComponent = createHeaderComponent(project, editor, changeId, workspace, relPath, hunkLines.size)
+        // Add header bar with file switcher, hunk navigation, Diff viewer, and Accept/Reject buttons
+        editor.headerComponent = ReviewHubHeaderBar(project, editor, relPath)
 
         // Attach mouse listener once to handle clicks and hover on "✓Accept | ✕Reject"
         attachMouseListeners(editor)
@@ -454,18 +503,31 @@ object ReviewHubInlineReview {
         return !lines.isNullOrEmpty()
     }
 
-        fun extractResolvedContent(editor: Editor): String {
+    fun extractResolvedContent(editor: Editor): String {
         val doc = editor.document
-        val blocks = editor.getUserData(MERGED_BLOCKS_KEY)
-        if (blocks.isNullOrEmpty()) {
-            return doc.text
-        }
-
+        val deletedHighlighters = editor.getUserData(DELETED_HIGHLIGHTERS_KEY)
         val deletedLines = mutableSetOf<Int>()
-        for (b in blocks) {
-            if (b.kind == MergedBlockKind.DELETED) {
-                for (line in b.startLine until b.endLine) {
-                    deletedLines.add(line)
+
+        if (!deletedHighlighters.isNullOrEmpty()) {
+            for (h in deletedHighlighters) {
+                if (h.isValid && h.startOffset <= h.endOffset && h.endOffset <= doc.textLength) {
+                    val startLine = doc.getLineNumber(h.startOffset)
+                    val endLine = doc.getLineNumber(h.endOffset)
+                    for (line in startLine..endLine) {
+                        deletedLines.add(line)
+                    }
+                }
+            }
+        } else {
+            val blocks = editor.getUserData(MERGED_BLOCKS_KEY)
+            if (blocks.isNullOrEmpty()) {
+                return doc.text
+            }
+            for (b in blocks) {
+                if (b.kind == MergedBlockKind.DELETED) {
+                    for (line in b.startLine until b.endLine) {
+                        deletedLines.add(line)
+                    }
                 }
             }
         }
@@ -482,84 +544,6 @@ object ReviewHubInlineReview {
         return resultLines.joinToString("\n")
     }
 
-    private fun createHeaderComponent(
-        project: Project,
-        editor: Editor,
-        changeId: String,
-        workspace: String,
-        relPath: String,
-        hunkCount: Int
-    ): javax.swing.JComponent {
-        val panel = javax.swing.JPanel(FlowLayout(FlowLayout.LEFT, 6, 2))
-        panel.border = javax.swing.BorderFactory.createCompoundBorder(
-            javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor(Color(0xD0, 0xD7, 0xDE), Color(0x38, 0x3A, 0x42))),
-            javax.swing.BorderFactory.createEmptyBorder(2, 6, 2, 6)
-        )
-        panel.background = JBColor(Color(0xF6, 0xF8, 0xFA), Color(0x2B, 0x2D, 0x30))
-
-        val acceptAllBtn = javax.swing.JButton("✓ Accept File", AllIcons.Actions.Checked)
-        acceptAllBtn.isFocusable = false
-        acceptAllBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        acceptAllBtn.addActionListener {
-            val hubManager = project.getService(HubManager::class.java)
-            val client = hubManager.client ?: return@addActionListener
-            val customText = extractResolvedContent(editor)
-            ApplicationManager.getApplication().executeOnPooledThread {
-                client.accept(changeId = changeId, workspace = workspace, customContent = customText)
-                hubManager.refresh()
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    val file = File(workspace, relPath)
-                    val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                    if (vf != null && vf.isValid) {
-                        clearFileReview(project, vf)
-                    }
-                    VirtualFileManager.getInstance().asyncRefresh(null)
-                }
-            }
-        }
-        panel.add(acceptAllBtn)
-
-        val rejectAllBtn = javax.swing.JButton("✕ Reject File", AllIcons.Actions.Cancel)
-        rejectAllBtn.isFocusable = false
-        rejectAllBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        rejectAllBtn.addActionListener {
-            val hubManager = project.getService(HubManager::class.java)
-            val client = hubManager.client ?: return@addActionListener
-            ApplicationManager.getApplication().executeOnPooledThread {
-                client.reject(changeId = changeId, workspace = workspace)
-                hubManager.refresh()
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    val file = File(workspace, relPath)
-                    val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                    if (vf != null && vf.isValid) {
-                        clearFileReview(project, vf)
-                        if (!file.exists()) {
-                            FileEditorManager.getInstance(project).closeFile(vf)
-                        }
-                    }
-                    VirtualFileManager.getInstance().asyncRefresh(null)
-                }
-            }
-        }
-        panel.add(rejectAllBtn)
-
-        val nextBtn = javax.swing.JButton("↓ Next Hunk", AllIcons.Actions.MoveDown)
-        nextBtn.isFocusable = false
-        nextBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        nextBtn.addActionListener { scrollToNextHunk(editor) }
-        panel.add(nextBtn)
-
-        val prevBtn = javax.swing.JButton("↑ Prev Hunk", AllIcons.Actions.MoveUp)
-        prevBtn.isFocusable = false
-        prevBtn.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-        prevBtn.addActionListener { scrollToPrevHunk(editor) }
-        panel.add(prevBtn)
-
-        return panel
-    }
-
     private fun decideHunk(
         project: Project,
         changeId: String,
@@ -568,41 +552,49 @@ object ReviewHubInlineReview {
         hunkId: String,
         kind: String
     ) {
-        if (!inFlightHunks.add(hunkId)) return
+        val hunkKey = "$changeId:$hunkId"
+        if (!inFlightHunks.add(hunkKey)) return
         val hubManager = project.getService(HubManager::class.java)
         val client = hubManager.client ?: run {
-            inFlightHunks.remove(hunkId)
+            inFlightHunks.remove(hunkKey)
             return
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            if (kind == "accept") {
-                client.accept(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
-            } else {
-                client.reject(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
-            }
+            try {
+                if (kind == "accept") {
+                    client.accept(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
+                } else {
+                    client.reject(changeId = changeId, workspace = workspace, hunkIds = listOf(hunkId))
+                }
 
-            hubManager.refresh()
+                hubManager.refresh()
 
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
+                ApplicationManager.getApplication().invokeLater {
+                    try {
+                        if (project.isDisposed) return@invokeLater
 
-                val file = File(workspace, relPath)
-                val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                if (vf != null && vf.isValid) {
-                    if (!file.exists()) {
-                        FileEditorManager.getInstance(project).closeFile(vf)
-                    } else {
-                        val editors = FileEditorManager.getInstance(project).getEditors(vf)
-                        for (e in editors) {
-                            if (e is TextEditor && !e.editor.isDisposed) {
-                                updateInlays(project, e.editor, relPath)
+                        val file = File(workspace, relPath)
+                        val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
+                        if (vf != null && vf.isValid) {
+                            if (!file.exists()) {
+                                FileEditorManager.getInstance(project).closeFile(vf)
+                            } else {
+                                val editors = FileEditorManager.getInstance(project).getEditors(vf)
+                                for (e in editors) {
+                                    if (e is TextEditor && !e.editor.isDisposed) {
+                                        updateInlays(project, e.editor, relPath)
+                                    }
+                                }
                             }
                         }
+                        VirtualFileManager.getInstance().asyncRefresh(null)
+                    } finally {
+                        inFlightHunks.remove(hunkKey)
                     }
                 }
-                VirtualFileManager.getInstance().asyncRefresh(null)
-                inFlightHunks.remove(hunkId)
+            } catch (e: Throwable) {
+                inFlightHunks.remove(hunkKey)
             }
         }
     }

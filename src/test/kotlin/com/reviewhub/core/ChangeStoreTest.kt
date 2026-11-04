@@ -165,5 +165,56 @@ class ChangeStoreTest {
         assertTrue(result!!.resolved)
         assertEquals(customText, file.readText())
     }
+
+    @Test
+    fun `propose delete removes file on accept and preserves on reject`() {
+        val wsDir = tempFolder.newFolder("delete-project")
+        val file1 = File(wsDir, "DeleteMe.kt")
+        file1.writeText("class DeleteMe")
+        val file2 = File(wsDir, "KeepMe.kt")
+        file2.writeText("class KeepMe")
+
+        val store = ChangeStore()
+        val cs1 = store.propose(wsDir.absolutePath, "DeleteMe.kt", "", proposedExists = false)
+        val cs2 = store.propose(wsDir.absolutePath, "KeepMe.kt", "", proposedExists = false)
+
+        assertEquals("", store.readFile(wsDir.absolutePath, "DeleteMe.kt"))
+
+        // Accept deletion of DeleteMe.kt
+        val res1 = store.accept(changeId = cs1.id, workspace = wsDir.absolutePath)
+        assertNotNull(res1)
+        assertTrue(res1!!.resolved)
+        assertFalse("Accepted deletion must delete file from disk", file1.exists())
+
+        // Reject deletion of KeepMe.kt
+        val res2 = store.reject(changeId = cs2.id, workspace = wsDir.absolutePath)
+        assertNotNull(res2)
+        assertTrue(res2!!.resolved)
+        assertTrue("Rejected deletion must keep file on disk", file2.exists())
+        assertEquals("class KeepMe", file2.readText())
+    }
+
+    @Test
+    fun `subsequent propose preserves already decided partial hunks`() {
+        val wsDir = tempFolder.newFolder("partial-project")
+        val file = File(wsDir, "Partial.kt")
+        file.writeText("line 1\nline 2\nline 3\nline 4\nline 5")
+
+        val store = ChangeStore()
+        // Propose modifying line 1 and line 5 (2 disjoint hunks)
+        val cs1 = store.propose(wsDir.absolutePath, "Partial.kt", "line 1 accepted\nline 2\nline 3\nline 4\nline 5 pending")
+        assertEquals(2, cs1.hunks.size)
+
+        // User accepts hunk-1 only
+        val firstHunkId = cs1.hunks[0].id
+        store.accept(changeId = cs1.id, workspace = wsDir.absolutePath, hunkIds = listOf(firstHunkId))
+
+        // Now AI proposes another edit on top of staged state
+        val cs2 = store.propose(wsDir.absolutePath, "Partial.kt", "line 1 accepted\nline 2\nline 3\nline 4\nline 5 modified again")
+        // Hunk 1 was already accepted so baseline now includes "line 1 accepted"; only 1 pending hunk should remain
+        assertEquals(1, cs2.hunks.size)
+        assertEquals(listOf("line 5"), cs2.hunks[0].oldLines)
+        assertEquals(listOf("line 5 modified again"), cs2.hunks[0].newLines)
+    }
 }
 

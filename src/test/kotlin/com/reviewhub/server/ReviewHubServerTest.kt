@@ -176,5 +176,71 @@ class ReviewHubServerTest {
         val onDiskAfter = sampleFile.readText()
         assertTrue(onDiskAfter.contains("Hello Review Hub"))
     }
+
+    @Test
+    fun testMcpProposeDeleteAndAbsolutePathRouting() {
+        val fileToDelete = File(workspaceDir, "Obsolete.kt")
+        fileToDelete.writeText("class Obsolete")
+
+        val absPath = fileToDelete.absolutePath.replace('\\', '/')
+        val deleteCall = """
+        {
+          "jsonrpc": "2.0",
+          "id": 5,
+          "method": "tools/call",
+          "params": {
+            "name": "propose_delete",
+            "arguments": {
+              "path": "$absPath"
+            }
+          }
+        }
+        """.trimIndent()
+
+        val req = Request.Builder()
+            .url("http://127.0.0.1:${server.port}/mcp")
+            .post(deleteCall.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        var changeId = ""
+        client.newCall(req).execute().use { resp ->
+            assertTrue(resp.isSuccessful)
+            val body = resp.body?.string() ?: ""
+            val obj = json.parseToJsonElement(body).jsonObject
+            val contentText = obj["result"]?.jsonObject?.get("content")?.jsonArray?.get(0)?.jsonObject?.get("text")?.jsonPrimitive?.content ?: ""
+            val toolRes = json.parseToJsonElement(contentText).jsonObject
+            changeId = toolRes["changeId"]?.jsonPrimitive?.content ?: ""
+            assertTrue(changeId.isNotEmpty())
+        }
+
+        // File still exists before accept
+        assertTrue(fileToDelete.exists())
+
+        // Accept the deletion
+        val acceptCall = """
+        {
+          "jsonrpc": "2.0",
+          "id": 6,
+          "method": "tools/call",
+          "params": {
+            "name": "accept",
+            "arguments": {
+              "changeId": "$changeId"
+            }
+          }
+        }
+        """.trimIndent()
+
+        val req2 = Request.Builder()
+            .url("http://127.0.0.1:${server.port}/mcp")
+            .post(acceptCall.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(req2).execute().use { resp ->
+            assertTrue(resp.isSuccessful)
+        }
+
+        assertFalse("File should be deleted from disk after accepting propose_delete", fileToDelete.exists())
+    }
 }
 

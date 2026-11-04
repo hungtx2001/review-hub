@@ -49,23 +49,55 @@ object FuzzyMatchUtil {
 
         if (oldTrimmed.isEmpty() || oldTrimmed.size > textLines.size) return null
 
-        val matchIndex = findMatchingLineWindow(textLines, oldTrimmed)
-        if (matchIndex >= 0) {
-            val beforeLines = textLines.subList(0, matchIndex)
-            val afterLines = textLines.subList(matchIndex + oldLines.size, textLines.size)
+        val newLinesRaw = newString.replace("\r\n", "\n").split("\n")
+        val matchIndices = findMatchingLineWindows(textLines, oldTrimmed, replaceAll)
+        if (matchIndices.isNotEmpty()) {
+            val resultLines = mutableListOf<String>()
+            var currentIdx = 0
+            val oldFirstIndent = oldLines.firstOrNull { it.isNotBlank() }?.takeWhile { it == ' ' || it == '\t' } ?: ""
+            val newFirstIndent = newLinesRaw.firstOrNull { it.isNotBlank() }?.takeWhile { it == ' ' || it == '\t' } ?: ""
 
-            val newLines = newString.replace("\r\n", "\n").split("\n")
+            for (matchIndex in matchIndices) {
+                if (matchIndex > currentIdx) {
+                    resultLines.addAll(textLines.subList(currentIdx, matchIndex))
+                }
+                val targetFirstIndent = textLines.subList(matchIndex, matchIndex + oldLines.size)
+                    .firstOrNull { it.isNotBlank() }
+                    ?.takeWhile { it == ' ' || it == '\t' } ?: ""
 
-            val combined = (beforeLines + newLines + afterLines).joinToString("\n")
+                val adjustedNewLines = if (oldFirstIndent == newFirstIndent && targetFirstIndent != oldFirstIndent) {
+                    newLinesRaw.map { line ->
+                        if (line.isBlank()) line
+                        else if (line.startsWith(oldFirstIndent)) targetFirstIndent + line.substring(oldFirstIndent.length)
+                        else line
+                    }
+                } else {
+                    newLinesRaw
+                }
+
+                resultLines.addAll(adjustedNewLines)
+                currentIdx = matchIndex + oldLines.size
+            }
+            if (currentIdx < textLines.size) {
+                resultLines.addAll(textLines.subList(currentIdx, textLines.size))
+            }
+
+            val combined = resultLines.joinToString("\n")
             return if (isWindows) combined.replace("\n", "\r\n") else combined
         }
 
         return null
     }
 
-    private fun findMatchingLineWindow(textLines: List<String>, oldTrimmed: List<String>): Int {
+    private fun findMatchingLineWindows(
+        textLines: List<String>,
+        oldTrimmed: List<String>,
+        replaceAll: Boolean
+    ): List<Int> {
         val windowSize = oldTrimmed.size
-        for (i in 0..(textLines.size - windowSize)) {
+        val matches = mutableListOf<Int>()
+        var i = 0
+        while (i <= textLines.size - windowSize) {
             var matched = true
             for (j in 0 until windowSize) {
                 if (textLines[i + j].trim() != oldTrimmed[j]) {
@@ -73,9 +105,15 @@ object FuzzyMatchUtil {
                     break
                 }
             }
-            if (matched) return i
+            if (matched) {
+                matches.add(i)
+                if (!replaceAll) break
+                i += windowSize
+            } else {
+                i++
+            }
         }
-        return -1
+        return matches
     }
 }
 

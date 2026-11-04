@@ -48,8 +48,12 @@ class HubManager(private val project: Project) : Disposable {
     private var pollingTimer: Timer? = null
 
     init {
-        initEmbeddedServerAndConnect()
         setupStoreListener()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (!project.isDisposed) {
+                initEmbeddedServerAndConnect()
+            }
+        }
         startPolling()
     }
 
@@ -81,7 +85,7 @@ class HubManager(private val project: Project) : Disposable {
 
     private fun setupStoreListener() {
         store.addChangeListener { _, _ ->
-            ApplicationManager.getApplication().invokeLater {
+            ApplicationManager.getApplication().executeOnPooledThread {
                 if (!project.isDisposed) {
                     refresh()
                 }
@@ -145,6 +149,20 @@ class HubManager(private val project: Project) : Disposable {
                 logger.info("Connected to Review Hub at ${entry.url}")
                 refresh()
                 return true
+            }
+        }
+
+        if (embeddedServer == null) {
+            try {
+                val server = ReviewHubServer(store, preferredPort = 49182, workspacePath = project.basePath)
+                val port = server.start()
+                embeddedServer = server
+                client = HubClient("http://127.0.0.1:$port", server.token)
+                logger.info("Started fallback embedded Review Hub MCP server on port $port")
+                refresh()
+                return true
+            } catch (e: Exception) {
+                logger.warn("Failed to start fallback embedded Review Hub server", e)
             }
         }
 
@@ -214,6 +232,12 @@ class HubManager(private val project: Project) : Disposable {
         ApplicationManager.getApplication().executeOnPooledThread {
             c.accept(workspace = workspace)
             refresh()
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) {
+                    ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
+                    VirtualFileManager.getInstance().asyncRefresh(null)
+                }
+            }
         }
     }
 
@@ -223,6 +247,12 @@ class HubManager(private val project: Project) : Disposable {
         ApplicationManager.getApplication().executeOnPooledThread {
             c.reject(workspace = workspace)
             refresh()
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) {
+                    ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
+                    VirtualFileManager.getInstance().asyncRefresh(null)
+                }
+            }
         }
     }
 

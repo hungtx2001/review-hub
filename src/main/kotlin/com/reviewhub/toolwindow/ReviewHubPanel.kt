@@ -128,36 +128,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
     }
 
     private fun openRealFile(item: ChangeSummary) {
-        val basePath = project.basePath ?: return
-        val file = File(basePath, item.path)
-        val lfs = LocalFileSystem.getInstance()
-        val vf = lfs.refreshAndFindFileByIoFile(file) ?: lfs.findFileByIoFile(file)
-        if (vf != null) {
-            FileEditorManager.getInstance(project).openFile(vf, true)
-            return
-        }
-
-        // New file that does not exist on disk yet:
-        // Materialize it on disk with proposed content so it opens in the editor
-        // with the in-editor inline review format (✓Accept | ✗Reject, gutters, line highlights).
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val client = hubManager.client ?: return@executeOnPooledThread
-            val content = client.getChange(item.id, basePath)?.proposed ?: ""
-            try {
-                file.parentFile?.mkdirs()
-                file.writeText(content)
-            } catch (_: Exception) {
-                return@executeOnPooledThread
-            }
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                val createdVf = lfs.refreshAndFindFileByIoFile(file)
-                if (createdVf != null) {
-                    FileEditorManager.getInstance(project).openFile(createdVf, true)
-                }
-                VirtualFileManager.getInstance().asyncRefresh(null)
-            }
-        }
+        ReviewHubInlineReview.openReviewFile(project, item.path)
     }
 
     private fun showContextMenu(e: MouseEvent, item: ChangeSummary) {
