@@ -143,9 +143,11 @@ class ReviewHubServerTest {
         val onDiskBefore = sampleFile.readText()
         assertTrue(onDiskBefore.contains("Hello World"))
 
-        // Check read_file returns staged content
+        // Check read_file returns staged content and supports start_line/end_line
         val staged = store.readFile(workspaceDir.absolutePath, "Hello.kt")
         assertTrue(staged.contains("Hello Review Hub"))
+        val slice = store.readFile(workspaceDir.absolutePath, "Hello.kt", startLine = 2, endLine = 2)
+        assertEquals("    println(\"Hello Review Hub\")", slice)
 
         // 2. Accept change
         val acceptCall = """

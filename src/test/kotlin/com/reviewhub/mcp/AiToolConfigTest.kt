@@ -205,8 +205,7 @@ class AiToolConfigTest {
         )
 
         assertTrue(result.errors.isEmpty())
-        assertTrue(result.rulesInstalled.contains("AGENTS.md"))
-        assertTrue(result.rulesInstalled.contains("CLAUDE.md"))
+        assertEquals(listOf("AGENTS.md"), result.rulesInstalled)
 
         val content = agentsFile.readText()
         assertTrue(content.contains("# Existing project instructions"))

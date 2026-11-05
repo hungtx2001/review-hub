@@ -194,7 +194,6 @@ class HubManager(private val project: Project) : Disposable {
                     if (!project.isDisposed) {
                         FileStatusManager.getInstance(project).fileStatusesChanged()
                         ProjectView.getInstance(project).refresh()
-                        VirtualFileManager.getInstance().asyncRefresh(null)
 
                         // Update tool window badge
                         val toolWindowManager = ToolWindowManager.getInstance(project)

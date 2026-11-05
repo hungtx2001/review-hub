@@ -29,28 +29,18 @@ object AiToolConfigManager {
     const val MCP_TOML_SNIPPET = """[mcp.servers."review-hub"]
 url = "http://127.0.0.1:49182/sse""""
 
-    const val AGENT_RULES_CONTENT = """<!-- review-hub:start -->
-## Review Hub (required)
-
-This project uses Review Hub (JetBrains Plugin Embedded MCP Server at `http://127.0.0.1:49182/sse`) to safely review AI edits before writing to disk.
-
-### ⚠️ CRITICAL RULES FOR AI AGENTS:
-1. **DO NOT MODIFY SOURCE FILES DIRECTLY**: Never use native built-in `edit`, `write`, `create_file`, or terminal/shell commands (`echo >`, `cat >`, `sed`, `rm`, etc.) to alter code files.
-2. **USE REVIEW HUB MCP TOOLS INSTEAD**:
-   - `propose_edit` (or `mcp__review_hub__propose_edit`): Propose changing part of a file (`path`, `old_string`, `new_string`, optional `replace_all`).
-   - `propose_write` (or `mcp__review_hub__propose_write`): Propose creating a new file or replacing entire content (`path`, `content`).
-   - `propose_delete` (or `mcp__review_hub__propose_delete`): Propose deleting a file (`path`).
-   - `read_file` (or `mcp__review_hub__read_file`): Read a file through the staged review state (`path`).
-   - `list_changes` (or `mcp__review_hub__list_changes`): List pending changes awaiting review.
-   - `get_change` (or `mcp__review_hub__get_change`): Inspect detailed hunks and unified diff.
-3. **UNDERSTANDING STAGED STATE**:
-   - A `propose_*` call returns `status: "staged_for_review"` with a `changeId`.
-   - **This is SUCCESS, not an error.** The edit is staged in-memory for the developer to inspect and accept/reject individual hunks in their JetBrains IDE.
-   - Review Hub does not write your edit to disk until accepted. Reading the file with native tools or disk inspection will show the OLD content — that is expected.
-   - Always use the `read_file` MCP tool to inspect the content you have staged so far.
-   - Do NOT retry with a different tool and do NOT attempt to force write to disk.
-4. **FALLBACK**: Only fall back to built-in tools if Review Hub MCP explicitly returns an error indicating that the server is unreachable.
-<!-- review-hub:end -->"""
+    /**
+     * Agent rules injected into AGENTS.md / CLAUDE.md / etc.
+     * Single source of truth: the repo-root AGENTS.md (bundled as /rules/AGENTS.md by Gradle).
+     * Only the <!-- review-hub:start --> ... <!-- review-hub:end --> block is used.
+     */
+    val AGENT_RULES_CONTENT: String by lazy {
+        val raw = AiToolConfigManager::class.java.getResourceAsStream("/rules/AGENTS.md")
+            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            ?: error("Missing bundled resource /rules/AGENTS.md")
+        Regex("<!-- review-hub:start -->[\\s\\S]*?<!-- review-hub:end -->").find(raw)?.value
+            ?: error("AGENTS.md has no review-hub:start/end block")
+    }
 
     fun applyConfiguration(
         tools: List<DetectedAiTool>,
@@ -95,14 +85,21 @@ This project uses Review Hub (JetBrains Plugin Embedded MCP Server at `http://12
         }
 
         if (installRules && basePath != null) {
-            val ruleFiles = listOf("AGENTS.md", "CLAUDE.md", ".clinerules", ".cursorrules", ".windsurfrules")
+            val selectedIds = tools.filter { it.isSelected }.map { it.def.id }.toSet()
+            val ruleFiles = buildList {
+                add("AGENTS.md")
+                if ("claude-code" in selectedIds || Paths.get(basePath, "CLAUDE.md").toFile().exists()) add("CLAUDE.md")
+                if ("cline" in selectedIds || "roo-code" in selectedIds || Paths.get(basePath, ".clinerules").toFile().exists()) add(".clinerules")
+                if (Paths.get(basePath, ".cursorrules").toFile().exists()) add(".cursorrules")
+                if (Paths.get(basePath, ".windsurfrules").toFile().exists()) add(".windsurfrules")
+            }
             for (fileName in ruleFiles) {
                 try {
                     val ruleFile = Paths.get(basePath, fileName).toFile()
                     val existing = if (ruleFile.exists()) ruleFile.readText(Charsets.UTF_8) else ""
                     if (existing.contains("<!-- review-hub:start -->")) {
                         val pattern = Regex("<!-- review-hub:start -->[\\s\\S]*?<!-- review-hub:end -->")
-                        val updatedText = existing.replace(pattern, AGENT_RULES_CONTENT)
+                        val updatedText = existing.replace(pattern) { AGENT_RULES_CONTENT }
                         ruleFile.writeText(updatedText, Charsets.UTF_8)
                     } else {
                         val newContent = if (existing.trim().isEmpty()) {

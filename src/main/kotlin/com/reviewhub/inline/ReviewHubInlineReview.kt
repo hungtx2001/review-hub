@@ -65,27 +65,35 @@ object ReviewHubInlineReview {
         if (!doc.isWritable) {
             doc.setReadOnly(false)
         }
-        virtualFile.refresh(false, false)
-        try {
-            FileDocumentManager.getInstance().reloadFromDisk(doc)
+        val diskContent = try {
+            String(virtualFile.contentsToByteArray(), virtualFile.charset)
         } catch (_: Exception) {
+            null
+        }
+        if (diskContent != null && doc.text != diskContent) {
+            WriteCommandAction.runWriteCommandAction(project) {
+                doc.setText(diskContent)
+            }
         }
     }
 
     fun clearFileReview(project: Project, virtualFile: VirtualFile) {
-        if (!virtualFile.isValid) return
         val fileEditorManager = FileEditorManager.getInstance(project)
+        val ioFile = File(virtualFile.path)
+        if (!ioFile.exists()) {
+            fileEditorManager.closeFile(virtualFile)
+            WriteCommandAction.runWriteCommandAction(project) {
+                try { if (virtualFile.isValid) virtualFile.delete(this) } catch (_: Exception) {}
+            }
+            return
+        }
+        if (!virtualFile.isValid) return
         for (editor in fileEditorManager.getEditors(virtualFile)) {
             if (editor is TextEditor && !editor.editor.isDisposed) {
                 clear(project, editor.editor, virtualFile)
             }
         }
-        val ioFile = File(virtualFile.path)
-        if (!ioFile.exists()) {
-            fileEditorManager.closeFile(virtualFile)
-        } else {
-            reloadDocumentFromDisk(project, virtualFile)
-        }
+        reloadDocumentFromDisk(project, virtualFile)
     }
 
     fun reloadAllOpenReviewEditors(project: Project) {
@@ -93,14 +101,20 @@ object ReviewHubInlineReview {
         for (editor in fileEditorManager.allEditors) {
             if (editor is TextEditor) {
                 val vf = editor.file
-                val rawEditor = editor.editor
-                if (rawEditor.getUserData(STAGED_HASH_KEY) != null) {
-                    clear(project, rawEditor, vf)
-                }
-                if (vf != null && vf.isValid) {
-                    if (!File(vf.path).exists()) {
+                if (vf != null) {
+                    val ioFile = File(vf.path)
+                    if (!ioFile.exists()) {
                         fileEditorManager.closeFile(vf)
-                    } else {
+                        WriteCommandAction.runWriteCommandAction(project) {
+                            try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
+                        }
+                        continue
+                    }
+                    val rawEditor = editor.editor
+                    if (rawEditor.getUserData(STAGED_HASH_KEY) != null) {
+                        clear(project, rawEditor, vf)
+                    }
+                    if (vf.isValid) {
                         reloadDocumentFromDisk(project, vf)
                     }
                 }
@@ -171,19 +185,14 @@ object ReviewHubInlineReview {
 
         // 4. Restore disk content cleanly without triggering conflict warning
         if (hadStaged && targetVf != null && targetVf.isValid) {
-            targetVf.refresh(false, false)
-            try {
-                FileDocumentManager.getInstance().reloadFromDisk(doc)
+            val diskContent = try {
+                String(targetVf.contentsToByteArray(), targetVf.charset)
             } catch (_: Exception) {
-                val diskContent = try {
-                    String(targetVf.contentsToByteArray(), targetVf.charset)
-                } catch (_: Exception) {
-                    null
-                }
-                if (diskContent != null && doc.text != diskContent) {
-                    WriteCommandAction.runWriteCommandAction(project) {
-                        doc.setText(diskContent)
-                    }
+                null
+            }
+            if (diskContent != null && doc.text != diskContent) {
+                WriteCommandAction.runWriteCommandAction(project) {
+                    doc.setText(diskContent)
                 }
             }
         }
@@ -623,8 +632,15 @@ object ReviewHubInlineReview {
                 if (project.isDisposed) return@invokeLater
                 val file = File(workspace, relPath)
                 val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                if (vf != null && vf.isValid) {
-                    clearFileReview(project, vf)
+                if (vf != null) {
+                    if (!file.exists()) {
+                        FileEditorManager.getInstance(project).closeFile(vf)
+                        WriteCommandAction.runWriteCommandAction(project) {
+                            try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
+                        }
+                    } else if (vf.isValid) {
+                        clearFileReview(project, vf)
+                    }
                 }
                 VirtualFileManager.getInstance().asyncRefresh(null)
             }

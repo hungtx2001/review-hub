@@ -354,97 +354,51 @@ class ReviewHubServer(
                         putJsonArray("tools") {
                             add(toolSchema(
                                 "propose_edit",
-                                "Propose editing part of a file (staged for review in JetBrains IDE).",
+                                "Stage a partial file edit for IDE review (prefer over propose_write for existing files).",
                                 mapOf(
                                     "path" to "string",
                                     "old_string" to "string",
                                     "new_string" to "string",
-                                    "replace_all" to "boolean",
-                                    "workspace" to "string"
+                                    "replace_all" to "boolean"
                                 ),
                                 listOf("path", "old_string", "new_string")
                             ))
                             add(toolSchema(
                                 "propose_write",
-                                "Propose creating or overwriting a file (staged for review in JetBrains IDE).",
+                                "Stage a new file or full file replacement for IDE review.",
                                 mapOf(
                                     "path" to "string",
-                                    "content" to "string",
-                                    "workspace" to "string"
+                                    "content" to "string"
                                 ),
                                 listOf("path", "content")
                             ))
                             add(toolSchema(
                                 "propose_delete",
-                                "Propose deleting a file (staged for review in JetBrains IDE).",
-                                mapOf(
-                                    "path" to "string",
-                                    "workspace" to "string"
-                                ),
+                                "Stage a file deletion for IDE review.",
+                                mapOf("path" to "string"),
                                 listOf("path")
                             ))
                             add(toolSchema(
                                 "read_file",
-                                "Read a file through the staged review state.",
+                                "Read file content including staged edits (use start_line/end_line for partial reads).",
                                 mapOf(
                                     "path" to "string",
-                                    "workspace" to "string"
+                                    "start_line" to "integer",
+                                    "end_line" to "integer"
                                 ),
                                 listOf("path")
                             ))
                             add(toolSchema(
                                 "list_changes",
-                                "List all pending changes and hunks awaiting review in Review Hub.",
-                                mapOf("workspace" to "string"),
+                                "List pending staged file changes.",
+                                emptyMap(),
                                 emptyList()
                             ))
                             add(toolSchema(
                                 "get_change",
-                                "Inspect detailed hunks and unified diff for any pending change.",
-                                mapOf("changeId" to "string", "workspace" to "string"),
+                                "Get staged hunks for a changeId.",
+                                mapOf("changeId" to "string"),
                                 listOf("changeId")
-                            ))
-                            add(toolSchema(
-                                "accept",
-                                "Accept specific hunks or entire files (writes to disk).",
-                                mapOf("changeId" to "string", "path" to "string", "workspace" to "string"),
-                                emptyList()
-                            ))
-                            add(toolSchema(
-                                "reject",
-                                "Reject specific hunks or revert files to baseline.",
-                                mapOf("changeId" to "string", "path" to "string", "workspace" to "string"),
-                                emptyList()
-                            ))
-                            add(toolSchema(
-                                "set_checkpoint",
-                                "Accept current disk state as the baseline.",
-                                mapOf("workspace" to "string"),
-                                emptyList()
-                            ))
-                            add(toolSchema(
-                                "clear_checkpoint",
-                                "Clear the current checkpoint baseline.",
-                                mapOf("workspace" to "string"),
-                                emptyList()
-                            ))
-                            add(toolSchema(
-                                "rollback_checkpoint",
-                                "Rollback all files in the workspace to the initial checkpoint state, undoing AI changes.",
-                                mapOf("workspace" to "string"),
-                                emptyList()
-                            ))
-                            add(toolSchema(
-                                "get_review_status",
-                                "Check review status of staged changes (e.g. pending, applied, rejected) by file path or change ID.",
-                                mapOf("path" to "string", "changeId" to "string", "workspace" to "string"),
-                                emptyList()
-                            ))
-                            add(toolSchema(
-                                "list_workspaces",
-                                "List all active workspaces tracked by Review Hub.",
-                                emptyMap(),
-                                emptyList()
                             ))
                         }
                     }
@@ -536,14 +490,14 @@ class ReviewHubServer(
 
                 val replaced = FuzzyMatchUtil.findAndReplace(currentText, oldString, newString, replaceAll)
                 if (replaced == null) {
-                    return json.encodeToString(buildJsonObject {
+                    return compactJson.encodeToString(buildJsonObject {
                         put("status", "error")
                         put("error", "Target old_string not found in file: $targetPath")
                     })
                 }
 
                 val cs = store.propose(targetWs, targetPath, replaced, proposedExists = true)
-                json.encodeToString(buildJsonObject {
+                compactJson.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
                     put("hunks", cs.hunks.size)
@@ -553,7 +507,7 @@ class ReviewHubServer(
             "propose_write" -> {
                 val content = args["content"]?.jsonPrimitive?.content ?: ""
                 val cs = store.propose(targetWs, targetPath, content, proposedExists = true)
-                json.encodeToString(buildJsonObject {
+                compactJson.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
                     put("hunks", cs.hunks.size)
@@ -562,7 +516,7 @@ class ReviewHubServer(
 
             "propose_delete" -> {
                 val cs = store.propose(targetWs, targetPath, "", proposedExists = false)
-                json.encodeToString(buildJsonObject {
+                compactJson.encodeToString(buildJsonObject {
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
                     put("deleted", true)
@@ -570,59 +524,82 @@ class ReviewHubServer(
             }
 
             "read_file" -> {
-                store.readFile(targetWs, targetPath)
+                val startLine = args["start_line"]?.jsonPrimitive?.intOrNull
+                val endLine = args["end_line"]?.jsonPrimitive?.intOrNull
+                store.readFile(targetWs, targetPath, startLine, endLine)
             }
 
             "list_changes" -> {
                 val changes = store.listChanges(targetWs)
-                json.encodeToString(changes)
+                compactJson.encodeToString(buildJsonArray {
+                    for (c in changes) {
+                        addJsonObject {
+                            put("id", c.id)
+                            put("path", c.path)
+                            put("status", c.status)
+                            put("added", c.added)
+                            put("removed", c.removed)
+                            put("pending", c.pending)
+                        }
+                    }
+                })
             }
 
             "get_change" -> {
                 val changeId = args["changeId"]?.jsonPrimitive?.content ?: ""
                 val cs = store.getChange(changeId, targetWs)
-                if (cs != null) json.encodeToString(cs) else "{\"error\": \"Not found\"}"
+                if (cs != null) {
+                    compactJson.encodeToString(buildJsonObject {
+                        put("id", cs.id)
+                        put("path", cs.path)
+                        put("status", cs.status)
+                        if (!cs.proposedExists) put("deleted", true)
+                        put("hunks", compactJson.encodeToJsonElement(cs.hunks))
+                    })
+                } else {
+                    "{\"error\":\"Not found\"}"
+                }
             }
 
             "accept" -> {
                 val changeId = args["changeId"]?.jsonPrimitive?.content
                 val res = store.accept(changeId, targetWs, targetPath)
-                if (res != null) json.encodeToString(res) else "{\"error\": \"Not found\"}"
+                if (res != null) compactJson.encodeToString(res) else "{\"error\":\"Not found\"}"
             }
 
             "reject" -> {
                 val changeId = args["changeId"]?.jsonPrimitive?.content
                 val res = store.reject(changeId, targetWs, targetPath)
-                if (res != null) json.encodeToString(res) else "{\"error\": \"Not found\"}"
+                if (res != null) compactJson.encodeToString(res) else "{\"error\":\"Not found\"}"
             }
 
             "set_checkpoint" -> {
                 val info = store.setCheckpoint(targetWs)
-                json.encodeToString(info)
+                compactJson.encodeToString(info)
             }
 
             "clear_checkpoint" -> {
                 val ok = store.clearCheckpoint(targetWs)
-                "{\"ok\": $ok}"
+                "{\"ok\":$ok}"
             }
 
             "rollback_checkpoint" -> {
                 val files = store.rollbackToCheckpoint(targetWs)
-                "{\"status\": \"rolled_back\", \"files_reverted\": ${files.size}}"
+                "{\"status\":\"rolled_back\",\"files_reverted\":${files.size}}"
             }
 
             "get_review_status" -> {
                 val path = args["path"]?.jsonPrimitive?.contentOrNull
                 val changeId = args["changeId"]?.jsonPrimitive?.contentOrNull
                 val status = store.getReviewStatus(targetWs, path, changeId)
-                json.encodeToString(status)
+                compactJson.encodeToString(status)
             }
 
             "list_workspaces" -> {
-                json.encodeToString(store.listWorkspaces())
+                compactJson.encodeToString(store.listWorkspaces())
             }
 
-            else -> "{\"error\": \"Unknown tool: $name\"}"
+            else -> "{\"error\":\"Unknown tool: $name\"}"
         }
     }
 
@@ -694,12 +671,18 @@ class ReviewHubServer(
     }
 
     companion object {
+        private val bundledVersion: String by lazy {
+            ReviewHubServer::class.java.getResourceAsStream("/META-INF/gradle.properties")?.use { stream ->
+                java.util.Properties().apply { load(stream) }.getProperty("pluginVersion")?.trim()
+            } ?: "unknown"
+        }
+
         fun getVersion(): String {
             return try {
                 val pluginId = com.intellij.openapi.extensions.PluginId.getId("com.reviewhub.jetbrains")
-                com.intellij.ide.plugins.PluginManager.getInstance().findEnabledPlugin(pluginId)?.version ?: "0.1.0"
+                com.intellij.ide.plugins.PluginManager.getInstance().findEnabledPlugin(pluginId)?.version ?: bundledVersion
             } catch (_: Throwable) {
-                "0.1.0"
+                bundledVersion
             }
         }
     }

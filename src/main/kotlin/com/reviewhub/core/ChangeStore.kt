@@ -268,9 +268,19 @@ class ChangeStore {
 
         // Write accepted content to disk (or delete file if proposed deletion was accepted)
         val absFile = File(cs.absPath ?: File(normWs, cs.path).absolutePath)
-        if (allDecided && isDeletion) {
-            if (absFile.exists()) {
-                try { absFile.delete() } catch (_: Exception) {}
+        if (!cs.proposedExists) {
+            if (allDecided && allAccepted) {
+                if (absFile.exists()) {
+                    val deleted = absFile.delete()
+                    if (!deleted) {
+                        try {
+                            java.nio.file.Files.deleteIfExists(absFile.toPath())
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    cleanEmptyParentDirectories(absFile.parentFile, File(normWs))
+                }
             }
         } else {
             try {
@@ -387,25 +397,32 @@ class ChangeStore {
         )
     }
 
-    fun readFile(workspace: String, relPath: String): String {
+    fun readFile(workspace: String, relPath: String, startLine: Int? = null, endLine: Int? = null): String {
         val normWs = normalizeWorkspace(workspace)
         ensureWorkspaceLoaded(normWs)
         val normRel = PathUtil.toWorkspaceRelativePath(normWs, relPath)
 
-        val active = findChangeByPath(normWs, normRel)
-        if (active != null) {
+        val fullText = findChangeByPath(normWs, normRel)?.let { active ->
             if (!active.proposedExists && active.hunks.none { it.decision == "rejected" }) {
-                return ""
+                ""
+            } else {
+                HunkDiff.resolveStaged(active.baseline, active.hunks)
             }
-            return HunkDiff.resolveStaged(active.baseline, active.hunks)
+        } ?: run {
+            val file = File(normWs, normRel)
+            if (file.exists() && !file.isDirectory) {
+                try { file.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
+            } else {
+                ""
+            }
         }
 
-        val file = File(normWs, normRel)
-        return if (file.exists() && !file.isDirectory) {
-            try { file.readText(Charsets.UTF_8) } catch (_: Exception) { "" }
-        } else {
-            ""
-        }
+        if (startLine == null && endLine == null) return fullText
+        if (fullText.isEmpty()) return ""
+        val lines = fullText.lines()
+        val from = ((startLine ?: 1) - 1).coerceIn(0, lines.size)
+        val to = (endLine ?: lines.size).coerceIn(from, lines.size)
+        return lines.subList(from, to).joinToString("\n")
     }
 
     fun setCheckpoint(workspace: String): CheckpointInfo {
@@ -672,6 +689,20 @@ class ChangeStore {
 
     private fun normalizeWorkspace(path: String): String {
         return PathUtil.normalizeWorkspace(path).replace('\\', '/')
+    }
+
+    private fun cleanEmptyParentDirectories(dir: File?, root: File) {
+        var current = dir
+        while (current != null && current != root && current.exists() && current.isDirectory) {
+            val children = current.listFiles()
+            if (children != null && children.isEmpty()) {
+                val deleted = current.delete()
+                if (!deleted) break
+                current = current.parentFile
+            } else {
+                break
+            }
+        }
     }
 
     private fun sha256(input: String): String {

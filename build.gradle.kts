@@ -5,8 +5,8 @@ plugins {
     kotlin("plugin.serialization") version "2.0.20"
 }
 
-group = "com.reviewhub"
-version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
+group = providers.gradleProperty("pluginGroup").get()
+version = providers.gradleProperty("pluginVersion").get()
 
 repositories {
     mavenCentral()
@@ -31,14 +31,14 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         id = "com.reviewhub.jetbrains"
-        name = "Review Hub"
-        version = providers.gradleProperty("pluginVersion").getOrElse("0.1.0")
+        name = providers.gradleProperty("pluginName")
+        version = providers.gradleProperty("pluginVersion")
         vendor {
             name = "Trịnh Xuân Hưng"
         }
         ideaVersion {
-            sinceBuild = "241"
-            untilBuild = "262.*"
+            sinceBuild = providers.gradleProperty("pluginSinceBuild")
+            untilBuild = providers.gradleProperty("pluginUntilBuild")
         }
     }
 
@@ -55,6 +55,15 @@ tasks {
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+    // AGENTS.md and gradle.properties are bundled as single sources of truth for rules and version.
+    processResources {
+        from(rootProject.file("AGENTS.md")) {
+            into("rules")
+        }
+        from(rootProject.file("gradle.properties")) {
+            into("META-INF")
         }
     }
 }

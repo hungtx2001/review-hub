@@ -22,6 +22,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>v0.1.2</h3>
+        <ul>
+            <li><b>Token-Optimized MCP Protocol:</b> Compact JSON payloads, line-range support in <code>read_file</code>, streamlined 6-tool schema, and single-source <code>AGENTS.md</code> rule (~80 tokens).</li>
+            <li><b>Zero-Conflict VFS &amp; File Deletion Fix:</b> Clean in-memory document updates without File Cache Conflict popups and reliable VFS file deletion.</li>
+            <li><b>Project-Isolated Staging &amp; Shortcuts:</b> Per-project <code>.idea/review-hub</code> storage and quick keyboard shortcuts (<code>Alt+A</code>, <code>Alt+R</code>, <code>Ctrl+Alt+A</code>, <code>Ctrl+Alt+Z</code>).</li>
+        </ul>
         <h3>v0.1.1</h3>
         <ul>
             <li><b>Myers Diff Engine:</b> High-performance Myers diff algorithm with prefix/suffix trimming for sub-millisecond hunk computation.</li>

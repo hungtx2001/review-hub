@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
@@ -180,8 +181,15 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                 if (project.isDisposed) return@invokeLater
                 val file = File(workspace, item.path)
                 val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                if (vf != null && vf.isValid) {
-                    ReviewHubInlineReview.clearFileReview(project, vf)
+                if (vf != null) {
+                    if (!file.exists()) {
+                        FileEditorManager.getInstance(project).closeFile(vf)
+                        WriteCommandAction.runWriteCommandAction(project) {
+                            try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
+                        }
+                    } else if (vf.isValid) {
+                        ReviewHubInlineReview.clearFileReview(project, vf)
+                    }
                 }
                 VirtualFileManager.getInstance().asyncRefresh(null)
             }
@@ -197,10 +205,14 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                 if (project.isDisposed) return@invokeLater
                 val file = File(workspace, item.path)
                 val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                if (vf != null && vf.isValid) {
-                    ReviewHubInlineReview.clearFileReview(project, vf)
+                if (vf != null) {
                     if (!file.exists()) {
                         FileEditorManager.getInstance(project).closeFile(vf)
+                        WriteCommandAction.runWriteCommandAction(project) {
+                            try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
+                        }
+                    } else if (vf.isValid) {
+                        ReviewHubInlineReview.clearFileReview(project, vf)
                     }
                 }
                 VirtualFileManager.getInstance().asyncRefresh(null)
