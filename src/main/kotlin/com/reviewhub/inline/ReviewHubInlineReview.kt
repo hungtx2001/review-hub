@@ -44,8 +44,6 @@ object ReviewHubInlineReview {
     private val REJECT_PILL_BG = JBColor(Color(0xFF, 0xE2, 0xE5), Color(0x49, 0x1D, 0x24))
     private val RED_BG = JBColor(Color(0xFF, 0xEB, 0xEC), Color(0x3D, 0x19, 0x1E))
     private val GREEN_BG = JBColor(Color(0xE6, 0xFF, 0xED), Color(0x1B, 0x38, 0x22))
-    private val GREEN_GUTTER = JBColor(Color(0x2E, 0xA0, 0x43), Color(0x3F, 0xB9, 0x50))
-    private val RED_GUTTER = JBColor(Color(0xCF, 0x22, 0x2E), Color(0xF8, 0x51, 0x49))
     private val DELETED_TEXT_COLOR = JBColor(Color(0x82, 0x17, 0x1E), Color(0xFF, 0xA1, 0x98))
 
     val ACCEPT_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x56, 0xD3, 0x64))
@@ -329,12 +327,6 @@ object ReviewHubInlineReview {
         val activeHighlighters = mutableListOf<RangeHighlighter>()
         val activeInlays = mutableListOf<Inlay<*>>()
 
-        // Green gutter vertical bar renderer for added lines
-        val greenGutterMarker = LineMarkerRenderer { _, g, r ->
-            g.color = GREEN_GUTTER
-            g.fillRect(r.x + r.width - 4, r.y, 4, r.height)
-        }
-
         val totalPendingCount = stagedView.hunkAnchors.size
         val maxLine = (doc.lineCount - 1).coerceAtLeast(0)
 
@@ -391,7 +383,6 @@ object ReviewHubInlineReview {
                     attributes,
                     HighlighterTargetArea.LINES_IN_RANGE
                 )
-                highlighter.lineMarkerRenderer = greenGutterMarker
                 activeHighlighters.add(highlighter)
             }
         }
@@ -792,18 +783,14 @@ object ReviewHubInlineReview {
                     val blockH = deletedLines.size * lineHeight + 2
                     val fullW = maxOf(targetRegion.width, editor.contentComponent.width)
 
-                    // Soft red background + 4px left red indicator bar
                     g2.color = RED_BG
                     g2.fillRect(targetRegion.x, blockY, fullW, blockH)
-
-                    g2.color = RED_GUTTER
-                    g2.fillRect(targetRegion.x, blockY, 3, blockH)
 
                     g2.color = DELETED_TEXT_COLOR
                     for ((idx, delLine) in deletedLines.withIndex()) {
                         val lineY = blockY + (idx * lineHeight) + fm.ascent + (lineHeight - fm.height) / 2
                         val displayLine = delLine.replace("\t", "    ")
-                        g2.drawString(displayLine, targetRegion.x + 6, lineY)
+                        g2.drawString(displayLine, targetRegion.x, lineY)
                     }
                 }
             } finally {
