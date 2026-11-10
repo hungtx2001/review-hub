@@ -1,13 +1,8 @@
 package com.reviewhub.inline
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -15,210 +10,114 @@ import com.reviewhub.diff.ReviewHubDiffViewer
 import com.reviewhub.hub.HubManager
 import com.reviewhub.util.PathUtil
 import java.awt.*
-import java.io.File
 import javax.swing.*
 
 class ReviewHubHeaderBar(
     private val project: Project,
     private val editor: Editor,
-    private val relPath: String
+    private val relPath: String,
+    private val hunkCount: Int
 ) : JPanel(BorderLayout()) {
 
     init {
         border = BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor(Color(0xD0, 0xD7, 0xDE), Color(0x30, 0x36, 0x3D))),
-            JBUI.Borders.empty(4, 10, 4, 10)
+            BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor(Color(0xD0, 0xD7, 0xDE), Color(0x38, 0x3A, 0x42))),
+            JBUI.Borders.empty(3, 8, 3, 8)
         )
-        background = JBColor(Color(0xF6, 0xF8, 0xFA), Color(0x21, 0x26, 0x2D))
+        background = JBColor(Color(0xF6, 0xF8, 0xFA), Color(0x2B, 0x2D, 0x30))
 
         buildUI()
     }
 
     private fun buildUI() {
         val hubManager = project.getService(HubManager::class.java)
-        val basePath = project.basePath ?: return
         val currentChange = hubManager.findChange(relPath)
         val pendingFiles = hubManager.changes.filter { it.status != "resolved" }
         val fileIndex = pendingFiles.indexOfFirst { PathUtil.pathsMatch(it.path, relPath) }
 
-        // --- Left Panel: Logo, File Selector, Hunk Counter ---
-        val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
+        // --- Left Panel: Action Buttons & Hunk Navigation ---
+        val leftPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply {
             isOpaque = false
         }
 
-        val logoLabel = JBLabel("Review Hub", AllIcons.Actions.Diff, SwingConstants.LEFT).apply {
-            font = font.deriveFont(Font.BOLD, 12f)
-            foreground = JBColor(Color(0x24, 0x29, 0x2F), Color(0xF0, 0xF6, 0xFC))
+        val acceptFileBtn = createButton("✓ Accept File", AllIcons.Actions.Checked, "Accept all changes in this file (Ctrl+Alt+A)") {
+            ReviewHubInlineReview.decideCurrentFile(project, editor, "accept")
         }
-        leftPanel.add(logoLabel)
+        leftPanel.add(acceptFileBtn)
+
+        val rejectFileBtn = createButton("✕ Reject File", AllIcons.Actions.Cancel, "Reject all changes in this file and restore baseline (Ctrl+Alt+Z)") {
+            ReviewHubInlineReview.decideCurrentFile(project, editor, "reject")
+        }
+        leftPanel.add(rejectFileBtn)
+
+        if (hunkCount > 1) {
+            val nextBtn = createButton("↓ Next Hunk", AllIcons.Actions.MoveDown, "Jump to next pending change (Alt+Down)") {
+                ReviewHubInlineReview.scrollToNextHunk(editor)
+            }
+            leftPanel.add(nextBtn)
+
+            val prevBtn = createButton("↑ Prev Hunk", AllIcons.Actions.MoveUp, "Jump to previous pending change (Alt+Up)") {
+                ReviewHubInlineReview.scrollToPrevHunk(editor)
+            }
+            leftPanel.add(prevBtn)
+        }
+
+        val diffBtn = createButton("Diff", AllIcons.Actions.Diff, "Compare with baseline in side-by-side Diff Viewer") {
+            val summary = currentChange ?: hubManager.findChange(relPath)
+            if (summary != null) {
+                ReviewHubDiffViewer.showDiff(project, summary)
+            }
+        }
+        leftPanel.add(diffBtn)
 
         if (pendingFiles.size > 1) {
-            val fileChoices = pendingFiles.map { "${it.path} (${it.pending})" }.toTypedArray()
-            val combo = JComboBox(fileChoices).apply {
-                selectedIndex = if (fileIndex >= 0) fileIndex else 0
-                isFocusable = false
-                addActionListener {
-                    val selectedIdx = selectedIndex
-                    if (selectedIdx in pendingFiles.indices && selectedIdx != fileIndex) {
-                        openFile(project, pendingFiles[selectedIdx].path)
-                    }
-                }
+            val prevFileBtn = createButton("◀ Prev File", null, "Open previous pending file") {
+                val prevIdx = if (fileIndex > 0) fileIndex - 1 else pendingFiles.size - 1
+                ReviewHubInlineReview.openReviewFile(project, pendingFiles[prevIdx].path)
             }
-            leftPanel.add(combo)
+            leftPanel.add(prevFileBtn)
 
-            val counterLabel = JBLabel("File ${fileIndex + 1} of ${pendingFiles.size}").apply {
-                foreground = JBColor(Color(0x57, 0x60, 0x6A), Color(0x8B, 0x94, 0x9E))
+            val nextFileBtn = createButton("Next File ▶", null, "Open next pending file") {
+                val nextIdx = if (fileIndex in 0 until pendingFiles.size - 1) fileIndex + 1 else 0
+                ReviewHubInlineReview.openReviewFile(project, pendingFiles[nextIdx].path)
             }
-            leftPanel.add(counterLabel)
-        } else {
-            val fileLabel = JBLabel(relPath).apply {
-                font = font.deriveFont(Font.BOLD, 12f)
-            }
-            leftPanel.add(fileLabel)
-        }
+            leftPanel.add(nextFileBtn)
 
-        val hunksPending = currentChange?.pending ?: 0
-        val hunksLabel = JBLabel("•  $hunksPending pending").apply {
-            foreground = JBColor(Color(0x57, 0x60, 0x6A), Color(0x8B, 0x94, 0x9E))
+            val acceptAllBtn = createButton("Accept All (${pendingFiles.size})", AllIcons.Actions.Commit, "Accept all pending files in workspace") {
+                hubManager.acceptAll()
+            }
+            leftPanel.add(acceptAllBtn)
         }
-        leftPanel.add(hunksLabel)
 
         add(leftPanel, BorderLayout.WEST)
 
-        // --- Right Panel: Navigation and Actions ---
-        val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply {
+        // --- Right Panel: Status & Shortcuts Hint ---
+        val rightPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 2)).apply {
             isOpaque = false
         }
 
-        // Navigation buttons (Antigravity-style)
-        if (pendingFiles.size > 1) {
-            val prevBtn = createButton("◀ Prev File", null) {
-                val prevIdx = if (fileIndex > 0) fileIndex - 1 else pendingFiles.size - 1
-                openFile(project, pendingFiles[prevIdx].path)
-            }
-            rightPanel.add(prevBtn)
-
-            val nextBtn = createButton("Next File ▶", null) {
-                val nextIdx = if (fileIndex in 0 until pendingFiles.size - 1) fileIndex + 1 else 0
-                openFile(project, pendingFiles[nextIdx].path)
-            }
-            rightPanel.add(nextBtn)
+        val fileBadge = if (pendingFiles.size > 1 && fileIndex >= 0) {
+            "File ${fileIndex + 1}/${pendingFiles.size}  •  "
+        } else {
+            ""
         }
 
-        if (hunksPending > 1) {
-            val prevHunkBtn = createButton("↑ Prev Hunk", AllIcons.Actions.MoveUp) {
-                ReviewHubInlineReview.scrollToPrevHunk(editor)
-            }
-            rightPanel.add(prevHunkBtn)
-
-            val nextHunkBtn = createButton("↓ Next Hunk", AllIcons.Actions.MoveDown) {
-                ReviewHubInlineReview.scrollToNextHunk(editor)
-            }
-            rightPanel.add(nextHunkBtn)
+        val statusBadge = JBLabel("${fileBadge}$hunkCount pending  •  Alt+A Accept  Alt+R Reject").apply {
+            font = font.deriveFont(11f)
+            foreground = ReviewHubInlineReview.SEPARATOR_COLOR
         }
-
-        // Action buttons
-        val acceptFileBtn = createButton("Accept File", AllIcons.Actions.Checked) {
-            if (currentChange == null) return@createButton
-            val client = hubManager.client ?: return@createButton
-            val customText = ReviewHubInlineReview.extractResolvedContent(editor)
-            ApplicationManager.getApplication().executeOnPooledThread {
-                client.accept(changeId = currentChange.id, workspace = basePath, customContent = customText)
-                hubManager.refresh()
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    val file = File(basePath, relPath)
-                    val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                    if (vf != null) {
-                        if (!file.exists()) {
-                            FileEditorManager.getInstance(project).closeFile(vf)
-                            WriteCommandAction.runWriteCommandAction(project) {
-                                try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
-                            }
-                        } else if (vf.isValid) {
-                            ReviewHubInlineReview.clearFileReview(project, vf)
-                        }
-                    }
-                    VirtualFileManager.getInstance().asyncRefresh(null)
-                    val remaining = hubManager.changes.filter { it.status != "resolved" && it.id != currentChange.id }
-                    if (remaining.isNotEmpty()) {
-                        openFile(project, remaining.first().path)
-                    }
-                }
-            }
-        }
-        rightPanel.add(acceptFileBtn)
-
-        val rejectFileBtn = createButton("Reject File", AllIcons.Actions.Cancel) {
-            if (currentChange == null) return@createButton
-            val client = hubManager.client ?: return@createButton
-            ApplicationManager.getApplication().executeOnPooledThread {
-                client.reject(changeId = currentChange.id, workspace = basePath)
-                hubManager.refresh()
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    val file = File(basePath, relPath)
-                    val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
-                    if (vf != null) {
-                        if (!file.exists()) {
-                            FileEditorManager.getInstance(project).closeFile(vf)
-                            WriteCommandAction.runWriteCommandAction(project) {
-                                try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
-                            }
-                        } else if (vf.isValid) {
-                            ReviewHubInlineReview.clearFileReview(project, vf)
-                        }
-                    }
-                    VirtualFileManager.getInstance().asyncRefresh(null)
-                    val remaining = hubManager.changes.filter { it.status != "resolved" && it.id != currentChange.id }
-                    if (remaining.isNotEmpty()) {
-                        openFile(project, remaining.first().path)
-                    }
-                }
-            }
-        }
-        rightPanel.add(rejectFileBtn)
-
-        if (pendingFiles.size > 1) {
-            val acceptAllBtn = createButton("Accept All", AllIcons.Actions.Commit) {
-                val client = hubManager.client ?: return@createButton
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    for (c in pendingFiles) {
-                        client.accept(changeId = c.id, workspace = basePath)
-                    }
-                    hubManager.refresh()
-                    ApplicationManager.getApplication().invokeLater {
-                        if (project.isDisposed) return@invokeLater
-                        ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
-                        VirtualFileManager.getInstance().asyncRefresh(null)
-                    }
-                }
-            }
-            rightPanel.add(acceptAllBtn)
-        }
-
-        val diffBtn = createButton("Diff", AllIcons.Actions.Diff) {
-            if (currentChange != null) {
-                ReviewHubDiffViewer.showDiff(project, currentChange)
-            }
-        }
-        rightPanel.add(diffBtn)
-
+        rightPanel.add(statusBadge)
         add(rightPanel, BorderLayout.EAST)
     }
 
-    private fun createButton(text: String, icon: Icon?, onClick: () -> Unit): JButton {
+    private fun createButton(text: String, icon: Icon?, tooltip: String, onClick: () -> Unit): JButton {
         return JButton(text, icon).apply {
             isFocusable = false
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            margin = JBUI.insets(2, 7)
+            toolTipText = tooltip
+            margin = JBUI.insets(2, 6)
             font = font.deriveFont(11f)
             addActionListener { onClick() }
         }
     }
-
-    private fun openFile(project: Project, targetRelPath: String) {
-        ReviewHubInlineReview.openReviewFile(project, targetRelPath)
-    }
 }
-

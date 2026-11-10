@@ -40,6 +40,8 @@ data class ChangeSummary(
     val applied: Boolean = false,
     val status: String = "pending",
     val binary: Boolean = false,
+    val baselineExists: Boolean = true,
+    val proposedExists: Boolean = true,
     val added: Int = 0,
     val removed: Int = 0,
     val accepted: Int = 0,

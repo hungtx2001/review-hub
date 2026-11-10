@@ -12,7 +12,7 @@ class ChangeStoreTest {
     val tempFolder = TemporaryFolder()
 
     @Test
-    fun `propose stages change in store`() {
+    fun `propose stages change in store and live-syncs to disk for build and test`() {
         val wsDir = tempFolder.newFolder("my-project")
         val sampleFile = File(wsDir, "Hello.kt")
         sampleFile.writeText("fun main() {\n    println(\"old\")\n}")
@@ -24,6 +24,11 @@ class ChangeStoreTest {
         assertEquals("Hello.kt", changeSet.path)
         assertEquals(1, changeSet.hunks.size)
         assertEquals("pending", changeSet.status)
+
+        // Disk immediately has the proposed content so compilers/test runners see new code
+        assertEquals("fun main() {\n    println(\"new\")\n}", sampleFile.readText())
+        // Baseline is safely preserved in ChangeSet
+        assertEquals("fun main() {\n    println(\"old\")\n}", changeSet.baseline)
 
         val list = store.listChanges(wsDir.absolutePath)
         assertEquals(1, list.size)
@@ -44,7 +49,7 @@ class ChangeStoreTest {
         assertTrue(result!!.resolved)
         assertEquals("applied", result.status)
 
-        // Verify disk content was updated
+        // Verify disk content is updated
         assertEquals("val initial = 2", sampleFile.readText())
 
         // Verify store cleared active change
@@ -53,24 +58,45 @@ class ChangeStoreTest {
     }
 
     @Test
-    fun `reject restores baseline and removes change`() {
+    fun `reject restores baseline on disk and removes change`() {
         val wsDir = tempFolder.newFolder("reject-project")
         val sampleFile = File(wsDir, "Reject.kt")
         sampleFile.writeText("original content")
 
         val store = ChangeStore()
         val cs = store.propose(wsDir.absolutePath, "Reject.kt", "unwanted content")
+        // While pending, disk has live-synced proposed content for AI build/test
+        assertEquals("unwanted content", sampleFile.readText())
 
         val result = store.reject(changeId = cs.id, workspace = wsDir.absolutePath)
         assertNotNull(result)
         assertTrue(result!!.resolved)
         assertEquals("rejected", result.status)
 
-        // Verify disk content stays baseline
+        // Verify disk content is immediately restored to baseline upon reject
         assertEquals("original content", sampleFile.readText())
 
         val remaining = store.listChanges(wsDir.absolutePath)
         assertEquals(0, remaining.size)
+    }
+
+    @Test
+    fun `rejecting newly created file deletes it from disk`() {
+        val wsDir = tempFolder.newFolder("reject-new-file")
+        val newFile = File(wsDir, "BrandNew.kt")
+        assertFalse(newFile.exists())
+
+        val store = ChangeStore()
+        val cs = store.propose(wsDir.absolutePath, "BrandNew.kt", "class BrandNew")
+        // Live-synced on disk so AI compiler can compile BrandNew.kt
+        assertTrue(newFile.exists())
+        assertEquals("class BrandNew", newFile.readText())
+
+        // Rejecting the new file removes it from disk
+        val res = store.reject(changeId = cs.id, workspace = wsDir.absolutePath)
+        assertNotNull(res)
+        assertTrue(res!!.resolved)
+        assertFalse("Rejected newly created file must be deleted from disk", newFile.exists())
     }
 
     @Test
@@ -92,6 +118,7 @@ class ChangeStoreTest {
         // Clean up by rejecting
         store2.reject(changeId = cs.id, workspace = wsDir.absolutePath)
         assertEquals(0, store2.listChanges(wsDir.absolutePath).size)
+        assertEquals("line 1\nline 2", sampleFile.readText())
     }
 
     @Test
@@ -167,7 +194,7 @@ class ChangeStoreTest {
     }
 
     @Test
-    fun `propose delete removes file on accept and preserves on reject`() {
+    fun `propose delete removes file on disk immediately and restores on reject`() {
         val wsDir = tempFolder.newFolder("delete-project")
         val file1 = File(wsDir, "DeleteMe.kt")
         file1.writeText("class DeleteMe")
@@ -179,18 +206,21 @@ class ChangeStoreTest {
         val cs2 = store.propose(wsDir.absolutePath, "KeepMe.kt", "", proposedExists = false)
 
         assertEquals("", store.readFile(wsDir.absolutePath, "DeleteMe.kt"))
+        // Deleted immediately on disk so AI builds test without the deleted file
+        assertFalse(file1.exists())
+        assertFalse(file2.exists())
 
         // Accept deletion of DeleteMe.kt
         val res1 = store.accept(changeId = cs1.id, workspace = wsDir.absolutePath)
         assertNotNull(res1)
         assertTrue(res1!!.resolved)
-        assertFalse("Accepted deletion must delete file from disk", file1.exists())
+        assertFalse("Accepted deletion must keep file deleted from disk", file1.exists())
 
-        // Reject deletion of KeepMe.kt
+        // Reject deletion of KeepMe.kt -> immediately restores file on disk from baseline snapshot!
         val res2 = store.reject(changeId = cs2.id, workspace = wsDir.absolutePath)
         assertNotNull(res2)
         assertTrue(res2!!.resolved)
-        assertTrue("Rejected deletion must keep file on disk", file2.exists())
+        assertTrue("Rejected deletion must restore file on disk", file2.exists())
         assertEquals("class KeepMe", file2.readText())
     }
 
@@ -216,5 +246,26 @@ class ChangeStoreTest {
         assertEquals(listOf("line 5"), cs2.hunks[0].oldLines)
         assertEquals(listOf("line 5 modified again"), cs2.hunks[0].newLines)
     }
-}
 
+    @Test
+    fun `partial hunk rejection immediately updates disk content`() {
+        val wsDir = tempFolder.newFolder("partial-reject-project")
+        val file = File(wsDir, "PartialReject.kt")
+        file.writeText("line 1\nline 2\nline 3\nline 4\nline 5")
+
+        val store = ChangeStore()
+        val cs = store.propose(wsDir.absolutePath, "PartialReject.kt", "line 1 bad\nline 2\nline 3\nline 4\nline 5 good")
+        assertEquals(2, cs.hunks.size)
+        assertEquals("line 1 bad\nline 2\nline 3\nline 4\nline 5 good", file.readText())
+
+        // Reject first hunk only ("line 1 bad" -> reverts to "line 1") while second hunk remains pending
+        val firstHunkId = cs.hunks[0].id
+        val res = store.reject(changeId = cs.id, workspace = wsDir.absolutePath, hunkIds = listOf(firstHunkId))
+        assertNotNull(res)
+        assertFalse(res!!.resolved)
+        assertEquals(1, res.remaining)
+
+        // Disk immediately has hunk-1 reverted and hunk-2 still active
+        assertEquals("line 1\nline 2\nline 3\nline 4\nline 5 good", file.readText())
+    }
+}

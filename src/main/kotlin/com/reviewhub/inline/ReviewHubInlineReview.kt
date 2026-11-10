@@ -1,15 +1,12 @@
 package com.reviewhub.inline
 
-import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.ActionGroup
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.Inlay
+import com.intellij.openapi.editor.LogicalPosition
+import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseListener
@@ -29,29 +26,27 @@ import com.reviewhub.diff.ReviewHubDiffViewer
 import com.reviewhub.hub.HubManager
 import com.reviewhub.model.Hunk
 import java.awt.*
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import java.awt.event.MouseMotionAdapter
 import java.io.File
-import javax.swing.Icon
+import java.util.Collections
 
 object ReviewHubInlineReview {
     private val HIGHLIGHTERS_KEY = Key.create<MutableList<RangeHighlighter>>("reviewhub.highlighters")
-    private val DELETED_HIGHLIGHTERS_KEY = Key.create<MutableList<RangeHighlighter>>("reviewhub.deleted_highlighters")
     private val INLAYS_KEY = Key.create<MutableList<Inlay<*>>>("reviewhub.inlays")
     private val STAGED_HASH_KEY = Key.create<String>("reviewhub.staged_hash")
     private val MOUSE_LISTENER_ATTACHED_KEY = Key.create<Boolean>("reviewhub.mouse_listener_attached")
     private val HUNK_LINES_KEY = Key.create<List<Int>>("reviewhub.hunk_lines")
-    private val MERGED_BLOCKS_KEY = Key.create<List<MergedBlock>>("reviewhub.merged_blocks")
+    private val STAGED_ANCHORS_KEY = Key.create<List<StagedHunkAnchor>>("reviewhub.staged_anchors")
 
     private val CHANGE_ID_KEY = Key.create<String>("reviewhub.change_id")
     private val REL_PATH_KEY = Key.create<String>("reviewhub.rel_path")
 
     private val ACCEPT_PILL_BG = JBColor(Color(0xDA, 0xFB, 0xE1), Color(0x19, 0x3D, 0x24))
     private val REJECT_PILL_BG = JBColor(Color(0xFF, 0xE2, 0xE5), Color(0x49, 0x1D, 0x24))
-    private val RED_BG = JBColor(Color(0xFF, 0xEB, 0xEC), Color(0x4C, 0x1C, 0x24))
-    private val GREEN_BG = JBColor(Color(0xE6, 0xFF, 0xED), Color(0x1F, 0x3E, 0x24))
+    private val RED_BG = JBColor(Color(0xFF, 0xEB, 0xEC), Color(0x3D, 0x19, 0x1E))
+    private val GREEN_BG = JBColor(Color(0xE6, 0xFF, 0xED), Color(0x1B, 0x38, 0x22))
     private val GREEN_GUTTER = JBColor(Color(0x2E, 0xA0, 0x43), Color(0x3F, 0xB9, 0x50))
+    private val RED_GUTTER = JBColor(Color(0xCF, 0x22, 0x2E), Color(0xF8, 0x51, 0x49))
+    private val DELETED_TEXT_COLOR = JBColor(Color(0x82, 0x17, 0x1E), Color(0xFF, 0xA1, 0x98))
 
     val ACCEPT_COLOR = JBColor(Color(0x1A, 0x7F, 0x37), Color(0x56, 0xD3, 0x64))
     val ACCEPT_HOVER_COLOR = JBColor(Color(0x11, 0x63, 0x29), Color(0x7E, 0xE7, 0x87))
@@ -61,18 +56,23 @@ object ReviewHubInlineReview {
 
     fun reloadDocumentFromDisk(project: Project, virtualFile: VirtualFile?) {
         if (virtualFile == null || !virtualFile.isValid) return
+        val ioFile = File(virtualFile.path)
+        if (!ioFile.exists()) return
+
+        virtualFile.refresh(false, false)
         val doc = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return
         if (!doc.isWritable) {
             doc.setReadOnly(false)
         }
         val diskContent = try {
-            String(virtualFile.contentsToByteArray(), virtualFile.charset)
+            ioFile.readText(Charsets.UTF_8).replace("\r\n", "\n")
         } catch (_: Exception) {
             null
         }
         if (diskContent != null && doc.text != diskContent) {
             WriteCommandAction.runWriteCommandAction(project) {
                 doc.setText(diskContent)
+                FileDocumentManager.getInstance().saveDocument(doc)
             }
         }
     }
@@ -124,22 +124,38 @@ object ReviewHubInlineReview {
 
     fun openReviewFile(project: Project, relPath: String) {
         val basePath = project.basePath ?: return
+        val hubManager = project.getService(HubManager::class.java)
+        val summary = hubManager.findChange(relPath)
+
         val file = File(basePath, relPath)
+        // If file was deleted by AI, open Side-by-Side Diff Viewer so disk stays deleted for builds
+        if (summary != null && !summary.proposedExists && !file.exists()) {
+            ReviewHubDiffViewer.showDiff(project, summary)
+            return
+        }
+
         val lfs = LocalFileSystem.getInstance()
         val vf = lfs.refreshAndFindFileByIoFile(file) ?: lfs.findFileByIoFile(file)
         if (vf != null && file.exists()) {
+            vf.refresh(false, false)
             FileEditorManager.getInstance(project).openFile(vf, true)
             return
         }
 
-        val hubManager = project.getService(HubManager::class.java)
-        val summary = hubManager.findChange(relPath) ?: return
+        if (summary == null) return
         ApplicationManager.getApplication().executeOnPooledThread {
-            val client = hubManager.client ?: return@executeOnPooledThread
-            val content = client.getChange(summary.id, basePath)?.proposed ?: ""
+            val cs = hubManager.getChangeSet(summary.id, basePath) ?: return@executeOnPooledThread
+            if (!cs.proposedExists) {
+                ApplicationManager.getApplication().invokeLater {
+                    if (!project.isDisposed) {
+                        ReviewHubDiffViewer.showDiff(project, summary)
+                    }
+                }
+                return@executeOnPooledThread
+            }
             try {
                 file.parentFile?.mkdirs()
-                file.writeText(content, Charsets.UTF_8)
+                file.writeText(cs.proposed, Charsets.UTF_8)
             } catch (_: Exception) {
                 return@executeOnPooledThread
             }
@@ -162,7 +178,6 @@ object ReviewHubInlineReview {
         val highlighters = editor.getUserData(HIGHLIGHTERS_KEY)
         highlighters?.forEach { editor.markupModel.removeHighlighter(it) }
         highlighters?.clear()
-        editor.getUserData(DELETED_HIGHLIGHTERS_KEY)?.clear()
 
         // 2. Remove inlays
         val inlays = editor.getUserData(INLAYS_KEY)
@@ -174,7 +189,7 @@ object ReviewHubInlineReview {
 
         editor.putUserData(STAGED_HASH_KEY, null)
         editor.putUserData(HUNK_LINES_KEY, null)
-        editor.putUserData(MERGED_BLOCKS_KEY, null)
+        editor.putUserData(STAGED_ANCHORS_KEY, null)
         editor.putUserData(CHANGE_ID_KEY, null)
         editor.putUserData(REL_PATH_KEY, null)
 
@@ -183,33 +198,29 @@ object ReviewHubInlineReview {
             doc.setReadOnly(false)
         }
 
-        // 4. Restore disk content cleanly without triggering conflict warning
+        // 4. Sync with disk content cleanly without triggering conflict warning
         if (hadStaged && targetVf != null && targetVf.isValid) {
-            val diskContent = try {
-                String(targetVf.contentsToByteArray(), targetVf.charset)
-            } catch (_: Exception) {
-                null
-            }
-            if (diskContent != null && doc.text != diskContent) {
-                WriteCommandAction.runWriteCommandAction(project) {
-                    doc.setText(diskContent)
-                }
-            }
+            reloadDocumentFromDisk(project, targetVf)
         }
     }
 
     fun updateInlays(project: Project, editor: Editor, relPath: String) {
         val hubManager = project.getService(HubManager::class.java)
         val workspace = project.basePath ?: return
-        val vf = LocalFileSystem.getInstance().findFileByIoFile(File(workspace, relPath))
+        val ioFile = File(workspace, relPath)
+        val vf = LocalFileSystem.getInstance().findFileByIoFile(ioFile)
 
         // Direct in-memory fast-path (< 1ms, zero HTTP overhead)
         if (hubManager.isLocalStore) {
             val changeSet = hubManager.store.findChangeByPath(workspace, relPath)
             val runRender = Runnable {
                 if (project.isDisposed || editor.isDisposed) return@Runnable
-                if (changeSet == null || changeSet.status == "resolved") {
-                    clear(project, editor, vf)
+                if (changeSet == null || changeSet.status == "resolved" || !changeSet.proposedExists) {
+                    if (changeSet != null && !changeSet.proposedExists && !ioFile.exists() && vf != null) {
+                        FileEditorManager.getInstance(project).closeFile(vf)
+                    } else {
+                        clear(project, editor, vf)
+                    }
                 } else {
                     render(project, editor, changeSet.id, changeSet.baseline, changeSet.hunks, workspace, relPath, vf)
                 }
@@ -239,7 +250,15 @@ object ReviewHubInlineReview {
 
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed || editor.isDisposed) return@invokeLater
-                render(project, editor, changeSet.id, changeSet.baseline, changeSet.hunks, workspace, relPath, vf)
+                if (!changeSet.proposedExists) {
+                    if (!ioFile.exists() && vf != null) {
+                        FileEditorManager.getInstance(project).closeFile(vf)
+                    } else {
+                        clear(project, editor, vf)
+                    }
+                } else {
+                    render(project, editor, changeSet.id, changeSet.baseline, changeSet.hunks, workspace, relPath, vf)
+                }
             }
         }
     }
@@ -260,10 +279,11 @@ object ReviewHubInlineReview {
             return
         }
 
-        val merged = MergedDiff.build(baseline, hunks)
+        val stagedView = MergedDiff.buildStagedView(baseline, hunks)
         val doc = editor.document
 
-        val currentHash = "${changeId}_${merged.text.hashCode()}"
+        val hunksSignature = pendingHunks.joinToString("|") { "${it.id}:${it.oldStart}:${it.newStart}:${it.oldLines.size}:${it.newLines.size}" }
+        val currentHash = "${changeId}_${stagedView.text.hashCode()}_${hunksSignature.hashCode()}"
         val prevHash = editor.getUserData(STAGED_HASH_KEY)
         val hadStagedBefore = prevHash != null
 
@@ -275,23 +295,25 @@ object ReviewHubInlineReview {
             if (!doc.isWritable) {
                 doc.setReadOnly(false)
             }
-            WriteCommandAction.runWriteCommandAction(project) {
-                if (doc.text != merged.text) {
-                    doc.setText(merged.text)
-                }
+            if (virtualFile != null && virtualFile.isValid) {
+                virtualFile.refresh(false, false)
             }
-            if (!doc.isWritable) {
-                doc.setReadOnly(false)
+            WriteCommandAction.runWriteCommandAction(project) {
+                if (doc.text != stagedView.text) {
+                    doc.setText(stagedView.text)
+                    FileDocumentManager.getInstance().saveDocument(doc)
+                }
             }
             editor.putUserData(STAGED_HASH_KEY, currentHash)
 
             if (hadStagedBefore) {
                 val safeLine = prevCaretLine.coerceIn(0, (doc.lineCount - 1).coerceAtLeast(0))
-                editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(safeLine, prevCaretCol.coerceAtLeast(0)))
+                editor.caretModel.moveToLogicalPosition(LogicalPosition(safeLine, prevCaretCol.coerceAtLeast(0)))
                 editor.scrollingModel.scrollVertically(prevScrollOffset)
             }
         }
-        editor.putUserData(MERGED_BLOCKS_KEY, merged.blocks)
+
+        editor.putUserData(STAGED_ANCHORS_KEY, stagedView.hunkAnchors)
         editor.putUserData(CHANGE_ID_KEY, changeId)
         editor.putUserData(REL_PATH_KEY, relPath)
 
@@ -299,58 +321,49 @@ object ReviewHubInlineReview {
         val existingHighlighters = editor.getUserData(HIGHLIGHTERS_KEY)
         existingHighlighters?.forEach { editor.markupModel.removeHighlighter(it) }
         existingHighlighters?.clear()
-        editor.getUserData(DELETED_HIGHLIGHTERS_KEY)?.clear()
 
         val existingInlays = editor.getUserData(INLAYS_KEY)
         existingInlays?.forEach { Disposer.dispose(it) }
         existingInlays?.clear()
 
         val activeHighlighters = mutableListOf<RangeHighlighter>()
-        val deletedHighlighters = mutableListOf<RangeHighlighter>()
         val activeInlays = mutableListOf<Inlay<*>>()
 
-        // Green gutter vertical bar renderer
+        // Green gutter vertical bar renderer for added lines
         val greenGutterMarker = LineMarkerRenderer { _, g, r ->
             g.color = GREEN_GUTTER
             g.fillRect(r.x + r.width - 4, r.y, 4, r.height)
         }
 
-        // Group blocks by hunkId so we can attach a single "✓Accept | ✕Reject" header above each hunk
-        val blocksByHunk = merged.blocks
-            .filter { it.kind != MergedBlockKind.CONTEXT && it.hunkId != null }
-            .groupBy { it.hunkId }
+        val totalPendingCount = stagedView.hunkAnchors.size
+        val maxLine = (doc.lineCount - 1).coerceAtLeast(0)
 
-        val totalPendingCount = blocksByHunk.size
-        var hunkOrderIndex = 1
+        for (anchor in stagedView.hunkAnchors) {
+            val anchorLine = anchor.anchorLine.coerceIn(0, maxLine)
+            val anchorLineOffset = doc.getLineStartOffset(anchorLine)
 
-        for ((hunkId, blocks) in blocksByHunk) {
-            if (hunkId == null) continue
-            val firstBlock = blocks.minByOrNull { it.startLine } ?: continue
+            // Calculate indentation of the anchor line (or first deleted line)
+            val lineEndOffset = doc.getLineEndOffset(anchorLine)
+            val lineText = doc.charsSequence.subSequence(anchorLineOffset, lineEndOffset).toString()
+            val sampleLine = if (lineText.isNotBlank()) lineText else (anchor.deletedLines.firstOrNull { it.isNotBlank() } ?: lineText)
+            val indent = sampleLine.takeWhile { it.isWhitespace() }
+            val addedCount = (anchor.addedEndLine - anchor.addedStartLine).coerceAtLeast(0)
 
-            val maxLine = (doc.lineCount - 1).coerceAtLeast(0)
-            val firstStartLine = firstBlock.startLine.coerceIn(0, maxLine)
-            val firstLineOffset = doc.getLineStartOffset(firstStartLine)
-
-            // Calculate indentation of the first line in this hunk
-            val lineStartOffset = doc.getLineStartOffset(firstStartLine)
-            val lineEndOffset = doc.getLineEndOffset(firstStartLine)
-            val lineText = doc.charsSequence.subSequence(lineStartOffset, lineEndOffset).toString()
-            val indent = lineText.takeWhile { it.isWhitespace() }
-
-            // Add Block Inlay for "✓Accept | ✕Reject" above the hunk
+            // Add Block Inlay for "✓Accept | ✕Reject" + Deleted Lines (so editor.document stays 100% clean)
             val renderer = HunkHeaderRenderer(
                 editor = editor,
                 indentText = indent,
-                hunkId = hunkId,
-                hunkNumber = hunkOrderIndex,
+                hunkId = anchor.hunkId,
+                hunkNumber = anchor.hunkNumber,
                 totalHunks = totalPendingCount,
-                onAccept = { decideHunk(project, changeId, workspace, relPath, hunkId, "accept") },
-                onReject = { decideHunk(project, changeId, workspace, relPath, hunkId, "reject") }
+                deletedLines = anchor.deletedLines,
+                addedLinesCount = addedCount,
+                onAccept = { decideHunk(project, changeId, workspace, relPath, anchor.hunkId, "accept") },
+                onReject = { decideHunk(project, changeId, workspace, relPath, anchor.hunkId, "reject") }
             )
-            hunkOrderIndex++
 
             val inlay = editor.inlayModel.addBlockElement(
-                firstLineOffset,
+                anchorLineOffset,
                 false,
                 true,
                 0,
@@ -360,16 +373,15 @@ object ReviewHubInlineReview {
                 activeInlays.add(inlay)
             }
 
-            // Highlight lines for each block in this hunk
-            for (block in blocks) {
-                val startLine = block.startLine.coerceIn(0, maxLine)
-                val endLine = (block.endLine - 1).coerceIn(startLine, maxLine)
+            // Highlight added lines in green
+            if (anchor.addedEndLine > anchor.addedStartLine && doc.lineCount > 0) {
+                val startLine = anchor.addedStartLine.coerceIn(0, maxLine)
+                val endLine = (anchor.addedEndLine - 1).coerceIn(startLine, maxLine)
                 val startOffset = doc.getLineStartOffset(startLine)
                 val endOffset = doc.getLineEndOffset(endLine)
 
-                val isDeleted = block.kind == MergedBlockKind.DELETED
                 val attributes = TextAttributes().apply {
-                    backgroundColor = if (isDeleted) RED_BG else GREEN_BG
+                    backgroundColor = GREEN_BG
                 }
 
                 val highlighter = editor.markupModel.addRangeHighlighter(
@@ -379,49 +391,37 @@ object ReviewHubInlineReview {
                     attributes,
                     HighlighterTargetArea.LINES_IN_RANGE
                 )
-
-                if (!isDeleted) {
-                    highlighter.lineMarkerRenderer = greenGutterMarker
-                } else {
-                    highlighter.isGreedyToLeft = false
-                    highlighter.isGreedyToRight = false
-                    deletedHighlighters.add(highlighter)
-                }
-
+                highlighter.lineMarkerRenderer = greenGutterMarker
                 activeHighlighters.add(highlighter)
             }
         }
 
         editor.putUserData(HIGHLIGHTERS_KEY, activeHighlighters)
-        editor.putUserData(DELETED_HIGHLIGHTERS_KEY, deletedHighlighters)
         editor.putUserData(INLAYS_KEY, activeInlays)
 
-        val hunkLines = blocksByHunk.values.mapNotNull { blocks ->
-            blocks.minByOrNull { it.startLine }?.startLine
-        }.sorted()
+        val hunkLines = stagedView.hunkAnchors.map { it.anchorLine }.sorted()
         editor.putUserData(HUNK_LINES_KEY, hunkLines)
 
         // Automatically scroll to the first pending hunk only when newly opened at top
         if (!hadStagedBefore && hunkLines.isNotEmpty() && prevCaretLine == 0) {
-            val firstLine = hunkLines.first()
-            editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(firstLine, 0))
-            editor.scrollingModel.scrollTo(com.intellij.openapi.editor.LogicalPosition(firstLine, 0), com.intellij.openapi.editor.ScrollType.CENTER)
+            val firstLine = hunkLines.first().coerceIn(0, maxLine)
+            editor.caretModel.moveToLogicalPosition(LogicalPosition(firstLine, 0))
+            editor.scrollingModel.scrollTo(LogicalPosition(firstLine, 0), ScrollType.CENTER)
         }
 
-        // Streamlined compact header bar
-        editor.headerComponent = createHeaderComponent(project, editor, changeId, workspace, relPath, hunkLines.size)
+        // Unified compact header bar with file & hunk navigation
+        editor.headerComponent = ReviewHubHeaderBar(project, editor, relPath, hunkLines.size)
 
         // Attach mouse listener once to handle clicks and hover on "✓Accept | ✕Reject"
         attachMouseListeners(editor)
     }
 
-    private val inFlightHunks = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val inFlightHunks = Collections.synchronizedSet(mutableSetOf<String>())
 
     private fun attachMouseListeners(editor: Editor) {
         if (editor.getUserData(MOUSE_LISTENER_ATTACHED_KEY) == true) return
         editor.putUserData(MOUSE_LISTENER_ATTACHED_KEY, true)
 
-        // EditorMouseListener handles IDE-level mouse events without duplicating Swing callbacks
         editor.addEditorMouseListener(object : EditorMouseListener {
             override fun mousePressed(e: EditorMouseEvent) {
                 if (handleClick(editor, e.mouseEvent.point)) {
@@ -446,7 +446,6 @@ object ReviewHubInlineReview {
             if (!inlay.isValid) continue
             val renderer = inlay.renderer as? HunkHeaderRenderer ?: continue
 
-            // 1. Check direct bounds recorded during paint()
             val accept = renderer.acceptBounds
             val reject = renderer.rejectBounds
             if (accept != null && accept.contains(point)) {
@@ -457,20 +456,21 @@ object ReviewHubInlineReview {
                 return true
             }
 
-            // 2. Precise fallback: showAbove=true places inlay ABOVE anchor visual line
-            val height = renderer.calcHeightInPixels(inlay)
-            val realY = inlay.bounds?.y ?: (editor.visualPositionToXY(inlay.visualPosition).y - height)
+            // Fallback bounds calculation for header row
+            val headerHeight = renderer.headerRowHeight()
+            val totalHeight = renderer.calcHeightInPixels(inlay)
+            val realY = inlay.bounds?.y ?: (editor.visualPositionToXY(inlay.visualPosition).y - totalHeight)
             val startX = inlay.bounds?.x ?: 0
 
             val indentWidth = fm.stringWidth(renderer.indentText)
             val acceptStartX = startX + indentWidth
             val acceptWidth = fm.stringWidth("✓Accept")
-            val acceptRect = Rectangle(acceptStartX - 8, realY - 4, acceptWidth + 16, height + 8)
+            val acceptRect = Rectangle(acceptStartX - 8, realY - 2, acceptWidth + 16, headerHeight + 4)
 
             val sepWidth = fm.stringWidth(" | ")
             val rejectStartX = acceptStartX + acceptWidth + sepWidth
             val rejectWidth = fm.stringWidth("✕Reject")
-            val rejectRect = Rectangle(rejectStartX - 8, realY - 4, rejectWidth + 16, height + 8)
+            val rejectRect = Rectangle(rejectStartX - 8, realY - 2, rejectWidth + 16, headerHeight + 4)
 
             if (acceptRect.contains(point)) {
                 renderer.onAccept()
@@ -493,19 +493,20 @@ object ReviewHubInlineReview {
             if (!inlay.isValid) continue
             val renderer = inlay.renderer as? HunkHeaderRenderer ?: continue
 
-            val height = renderer.calcHeightInPixels(inlay)
-            val realY = inlay.bounds?.y ?: (editor.visualPositionToXY(inlay.visualPosition).y - height)
+            val headerHeight = renderer.headerRowHeight()
+            val totalHeight = renderer.calcHeightInPixels(inlay)
+            val realY = inlay.bounds?.y ?: (editor.visualPositionToXY(inlay.visualPosition).y - totalHeight)
             val startX = inlay.bounds?.x ?: 0
 
             val indentWidth = fm.stringWidth(renderer.indentText)
             val acceptStartX = startX + indentWidth
             val acceptWidth = fm.stringWidth("✓Accept")
-            val acceptRect = Rectangle(acceptStartX - 8, realY - 4, acceptWidth + 16, height + 8)
+            val acceptRect = Rectangle(acceptStartX - 8, realY - 2, acceptWidth + 16, headerHeight + 4)
 
             val sepWidth = fm.stringWidth(" | ")
             val rejectStartX = acceptStartX + acceptWidth + sepWidth
             val rejectWidth = fm.stringWidth("✕Reject")
-            val rejectRect = Rectangle(rejectStartX - 8, realY - 4, rejectWidth + 16, height + 8)
+            val rejectRect = Rectangle(rejectStartX - 8, realY - 2, rejectWidth + 16, headerHeight + 4)
 
             val inAccept = renderer.acceptBounds?.contains(point) == true || acceptRect.contains(point)
             val inReject = renderer.rejectBounds?.contains(point) == true || rejectRect.contains(point)
@@ -531,8 +532,8 @@ object ReviewHubInlineReview {
         if (lines.isEmpty()) return
         val currentLine = editor.caretModel.logicalPosition.line
         val target = lines.firstOrNull { it > currentLine } ?: lines.first()
-        editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(target, 0))
-        editor.scrollingModel.scrollTo(com.intellij.openapi.editor.LogicalPosition(target, 0), com.intellij.openapi.editor.ScrollType.CENTER)
+        editor.caretModel.moveToLogicalPosition(LogicalPosition(target, 0))
+        editor.scrollingModel.scrollTo(LogicalPosition(target, 0), ScrollType.CENTER)
     }
 
     fun scrollToPrevHunk(editor: Editor) {
@@ -540,8 +541,8 @@ object ReviewHubInlineReview {
         if (lines.isEmpty()) return
         val currentLine = editor.caretModel.logicalPosition.line
         val target = lines.lastOrNull { it < currentLine } ?: lines.last()
-        editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(target, 0))
-        editor.scrollingModel.scrollTo(com.intellij.openapi.editor.LogicalPosition(target, 0), com.intellij.openapi.editor.ScrollType.CENTER)
+        editor.caretModel.moveToLogicalPosition(LogicalPosition(target, 0))
+        editor.scrollingModel.scrollTo(LogicalPosition(target, 0), ScrollType.CENTER)
     }
 
     fun hasPendingHunks(editor: Editor): Boolean {
@@ -549,70 +550,31 @@ object ReviewHubInlineReview {
         return !lines.isNullOrEmpty()
     }
 
+    /**
+     * Because deleted lines are rendered inside Block Inlays rather than inside `editor.document`,
+     * `editor.document.text` is always the clean valid file content (including any manual user edits).
+     */
     fun extractResolvedContent(editor: Editor): String {
-        val doc = editor.document
-        val deletedHighlighters = editor.getUserData(DELETED_HIGHLIGHTERS_KEY)
-        val deletedLines = mutableSetOf<Int>()
-
-        if (!deletedHighlighters.isNullOrEmpty()) {
-            for (h in deletedHighlighters) {
-                if (h.isValid && h.startOffset <= h.endOffset && h.endOffset <= doc.textLength) {
-                    val startLine = doc.getLineNumber(h.startOffset)
-                    val endLine = doc.getLineNumber(h.endOffset)
-                    for (line in startLine..endLine) {
-                        deletedLines.add(line)
-                    }
-                }
-            }
-        } else {
-            val blocks = editor.getUserData(MERGED_BLOCKS_KEY)
-            if (blocks.isNullOrEmpty()) {
-                return doc.text
-            }
-            for (b in blocks) {
-                if (b.kind == MergedBlockKind.DELETED) {
-                    for (line in b.startLine until b.endLine) {
-                        deletedLines.add(line)
-                    }
-                }
-            }
-        }
-
-        val lineCount = doc.lineCount
-        val resultLines = mutableListOf<String>()
-        for (i in 0 until lineCount) {
-            if (i !in deletedLines) {
-                val start = doc.getLineStartOffset(i)
-                val end = doc.getLineEndOffset(i)
-                resultLines.add(doc.charsSequence.subSequence(start, end).toString())
-            }
-        }
-        return resultLines.joinToString("\n")
+        return editor.document.text
     }
 
     fun decideCurrentHunk(project: Project, editor: Editor, kind: String) {
         val changeId = editor.getUserData(CHANGE_ID_KEY) ?: return
         val relPath = editor.getUserData(REL_PATH_KEY) ?: return
         val workspace = project.basePath ?: return
-        val blocks = editor.getUserData(MERGED_BLOCKS_KEY) ?: return
-
-        val blocksByHunk = blocks
-            .filter { it.kind != MergedBlockKind.CONTEXT && it.hunkId != null }
-            .groupBy { it.hunkId!! }
-        if (blocksByHunk.isEmpty()) return
+        val anchors = editor.getUserData(STAGED_ANCHORS_KEY) ?: return
+        if (anchors.isEmpty()) return
 
         val caretLine = editor.caretModel.logicalPosition.line
-        // Find hunk containing caret, or nearest hunk at/after caret, or last hunk
-        val targetHunkId = blocksByHunk.entries.firstOrNull { (_, hunkBlocks) ->
-            val minLine = hunkBlocks.minOf { it.startLine }
-            val maxLine = hunkBlocks.maxOf { it.endLine }
-            caretLine in (minLine - 1)..maxLine
-        }?.key ?: blocksByHunk.entries
-            .sortedBy { (_, hunkBlocks) -> hunkBlocks.minOf { it.startLine } }
-            .firstOrNull { (_, hunkBlocks) -> hunkBlocks.minOf { it.startLine } >= caretLine }
-            ?.key ?: blocksByHunk.keys.first()
+        val targetAnchor = anchors.firstOrNull { anchor ->
+            val maxEnd = anchor.addedEndLine.coerceAtLeast(anchor.anchorLine + 1)
+            caretLine in (anchor.anchorLine - 1)..maxEnd
+        } ?: anchors
+            .sortedBy { it.anchorLine }
+            .firstOrNull { it.anchorLine >= caretLine }
+            ?: anchors.first()
 
-        decideHunk(project, changeId, workspace, relPath, targetHunkId, kind)
+        decideHunk(project, changeId, workspace, relPath, targetAnchor.hunkId, kind)
     }
 
     fun decideCurrentFile(project: Project, editor: Editor, kind: String) {
@@ -643,88 +605,14 @@ object ReviewHubInlineReview {
                     }
                 }
                 VirtualFileManager.getInstance().asyncRefresh(null)
-            }
-        }
-    }
 
-    private fun createHeaderComponent(
-        project: Project,
-        editor: Editor,
-        changeId: String,
-        workspace: String,
-        relPath: String,
-        hunkCount: Int
-    ): javax.swing.JComponent {
-        val panel = javax.swing.JPanel(BorderLayout())
-        panel.border = javax.swing.BorderFactory.createCompoundBorder(
-            javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, JBColor(Color(0xD0, 0xD7, 0xDE), Color(0x38, 0x3A, 0x42))),
-            javax.swing.BorderFactory.createEmptyBorder(2, 8, 2, 8)
-        )
-        panel.background = JBColor(Color(0xF6, 0xF8, 0xFA), Color(0x2B, 0x2D, 0x30))
-
-        val leftPanel = javax.swing.JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
-            isOpaque = false
-        }
-
-        val acceptAllBtn = javax.swing.JButton("✓ Accept File", AllIcons.Actions.Checked).apply {
-            isFocusable = false
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            toolTipText = "Accept all changes in this file (Ctrl+Alt+A)"
-            addActionListener { decideCurrentFile(project, editor, "accept") }
-        }
-        leftPanel.add(acceptAllBtn)
-
-        val rejectAllBtn = javax.swing.JButton("✕ Reject File", AllIcons.Actions.Cancel).apply {
-            isFocusable = false
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            toolTipText = "Reject all changes in this file (Ctrl+Alt+Z)"
-            addActionListener { decideCurrentFile(project, editor, "reject") }
-        }
-        leftPanel.add(rejectAllBtn)
-
-        val nextBtn = javax.swing.JButton("↓ Next Hunk", AllIcons.Actions.MoveDown).apply {
-            isFocusable = false
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            toolTipText = "Jump to next pending change (Alt+Down)"
-            addActionListener { scrollToNextHunk(editor) }
-        }
-        leftPanel.add(nextBtn)
-
-        val prevBtn = javax.swing.JButton("↑ Prev Hunk", AllIcons.Actions.MoveUp).apply {
-            isFocusable = false
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            toolTipText = "Jump to previous pending change (Alt+Up)"
-            addActionListener { scrollToPrevHunk(editor) }
-        }
-        leftPanel.add(prevBtn)
-
-        val diffBtn = javax.swing.JButton("Diff", AllIcons.Actions.Diff).apply {
-            isFocusable = false
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            toolTipText = "Compare with baseline in side-by-side Diff Viewer"
-            addActionListener {
-                val hubManager = project.getService(HubManager::class.java)
-                val summary = hubManager.findChange(relPath)
-                if (summary != null) {
-                    ReviewHubDiffViewer.showDiff(project, summary)
+                // Automatically advance to the next pending file if any remain
+                val remaining = hubManager.changes.filter { it.status != "resolved" && it.id != changeId }
+                if (remaining.isNotEmpty()) {
+                    openReviewFile(project, remaining.first().path)
                 }
             }
         }
-        leftPanel.add(diffBtn)
-
-        panel.add(leftPanel, BorderLayout.WEST)
-
-        val rightPanel = javax.swing.JPanel(FlowLayout(FlowLayout.RIGHT, 8, 2)).apply {
-            isOpaque = false
-        }
-        val statusBadge = javax.swing.JLabel("$hunkCount pending  •  Alt+A Accept  Alt+R Reject").apply {
-            font = font.deriveFont(11f)
-            foreground = SEPARATOR_COLOR
-        }
-        rightPanel.add(statusBadge)
-        panel.add(rightPanel, BorderLayout.EAST)
-
-        return panel
     }
 
     private fun decideHunk(
@@ -756,6 +644,9 @@ object ReviewHubInlineReview {
                         if (vf != null && vf.isValid) {
                             if (!file.exists()) {
                                 FileEditorManager.getInstance(project).closeFile(vf)
+                                WriteCommandAction.runWriteCommandAction(project) {
+                                    try { if (vf.isValid) vf.delete(this) } catch (_: Exception) {}
+                                }
                             } else {
                                 val editors = FileEditorManager.getInstance(project).getEditors(vf)
                                 for (e in editors) {
@@ -770,7 +661,7 @@ object ReviewHubInlineReview {
                         inFlightHunks.remove(hunkKey)
                     }
                 }
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 inFlightHunks.remove(hunkKey)
             }
         }
@@ -782,6 +673,8 @@ object ReviewHubInlineReview {
         val hunkId: String,
         val hunkNumber: Int,
         val totalHunks: Int = 1,
+        val deletedLines: List<String> = emptyList(),
+        val addedLinesCount: Int = 0,
         val onAccept: () -> Unit,
         val onReject: () -> Unit
     ) : EditorCustomElementRenderer {
@@ -801,15 +694,36 @@ object ReviewHubInlineReview {
             return false
         }
 
+        fun headerRowHeight(): Int {
+            return (editor.lineHeight * 0.95).toInt().coerceAtLeast(18)
+        }
+
         override fun calcWidthInPixels(inlay: Inlay<*>): Int {
             val font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
             val fm = editor.contentComponent.getFontMetrics(font)
-            val badge = if (totalHunks > 1) "   #$hunkNumber/$totalHunks" else ""
-            return fm.stringWidth("$indentText✓Accept | ✕Reject$badge   ")
+            val badge = buildBadgeText()
+            val headerWidth = fm.stringWidth("$indentText✓Accept | ✕Reject$badge   ")
+            val maxDeletedWidth = deletedLines.maxOfOrNull { fm.stringWidth(it) + 32 } ?: 0
+            return maxOf(headerWidth, maxDeletedWidth, editor.contentComponent.width)
         }
 
         override fun calcHeightInPixels(inlay: Inlay<*>): Int {
-            return (editor.lineHeight * 0.95).toInt().coerceAtLeast(18)
+            val hHeight = headerRowHeight()
+            return if (deletedLines.isEmpty()) {
+                hHeight
+            } else {
+                hHeight + (deletedLines.size * editor.lineHeight) + 2
+            }
+        }
+
+        private fun buildBadgeText(): String {
+            val stats = buildList {
+                if (deletedLines.isNotEmpty()) add("-${deletedLines.size}")
+                if (addedLinesCount > 0) add("+$addedLinesCount")
+            }.joinToString(" ")
+            val statsPart = if (stats.isNotEmpty()) "  ($stats)" else ""
+            val indexPart = if (totalHunks > 1) "   #$hunkNumber/$totalHunks" else ""
+            return "$indexPart$statsPart"
         }
 
         override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
@@ -821,7 +735,8 @@ object ReviewHubInlineReview {
                 g2.font = font
                 val fm = g2.fontMetrics
 
-                val baseline = targetRegion.y + fm.ascent + (targetRegion.height - fm.height) / 2
+                val hHeight = headerRowHeight()
+                val baseline = targetRegion.y + fm.ascent + (hHeight - fm.height) / 2
                 var curX = targetRegion.x
 
                 // 1. Indentation
@@ -832,8 +747,8 @@ object ReviewHubInlineReview {
                 val acceptStr = "✓Accept"
                 val acceptWidth = fm.stringWidth(acceptStr)
                 val pillY = targetRegion.y + 1
-                val pillH = (targetRegion.height - 2).coerceAtLeast(14)
-                acceptBounds = Rectangle(curX - 6, targetRegion.y - 2, acceptWidth + 12, targetRegion.height + 4)
+                val pillH = (hHeight - 2).coerceAtLeast(14)
+                acceptBounds = Rectangle(curX - 6, targetRegion.y - 2, acceptWidth + 12, hHeight + 4)
 
                 if (hoveredAccept) {
                     g2.color = ACCEPT_PILL_BG
@@ -853,7 +768,7 @@ object ReviewHubInlineReview {
                 // 4. "✕Reject"
                 val rejectStr = "✕Reject"
                 val rejectWidth = fm.stringWidth(rejectStr)
-                rejectBounds = Rectangle(curX - 6, targetRegion.y - 2, rejectWidth + 12, targetRegion.height + 4)
+                rejectBounds = Rectangle(curX - 6, targetRegion.y - 2, rejectWidth + 12, hHeight + 4)
 
                 if (hoveredReject) {
                     g2.color = REJECT_PILL_BG
@@ -863,11 +778,33 @@ object ReviewHubInlineReview {
                 g2.drawString(rejectStr, curX, baseline)
                 curX += rejectWidth
 
-                // 5. Optional hunk counter "#1/3"
-                if (totalHunks > 1) {
-                    val badgeStr = "   #$hunkNumber/$totalHunks"
+                // 5. Hunk counter & line stats badge
+                val badgeStr = buildBadgeText()
+                if (badgeStr.isNotEmpty()) {
                     g2.color = SEPARATOR_COLOR
                     g2.drawString(badgeStr, curX, baseline)
+                }
+
+                // 6. Deleted lines block rendered cleanly inside the Inlay (never polluting editor.document)
+                if (deletedLines.isNotEmpty()) {
+                    val lineHeight = editor.lineHeight
+                    val blockY = targetRegion.y + hHeight
+                    val blockH = deletedLines.size * lineHeight + 2
+                    val fullW = maxOf(targetRegion.width, editor.contentComponent.width)
+
+                    // Soft red background + 4px left red indicator bar
+                    g2.color = RED_BG
+                    g2.fillRect(targetRegion.x, blockY, fullW, blockH)
+
+                    g2.color = RED_GUTTER
+                    g2.fillRect(targetRegion.x, blockY, 3, blockH)
+
+                    g2.color = DELETED_TEXT_COLOR
+                    for ((idx, delLine) in deletedLines.withIndex()) {
+                        val lineY = blockY + (idx * lineHeight) + fm.ascent + (lineHeight - fm.height) / 2
+                        val displayLine = delLine.replace("\t", "    ")
+                        g2.drawString(displayLine, targetRegion.x + 6, lineY)
+                    }
                 }
             } finally {
                 g2.dispose()

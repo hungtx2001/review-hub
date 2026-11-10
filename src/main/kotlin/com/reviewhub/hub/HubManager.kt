@@ -9,9 +9,9 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.FileStatusManager
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.ui.EditorNotifications
 import com.reviewhub.core.ChangeStore
 import com.reviewhub.inline.ReviewHubInlineReview
 import com.reviewhub.model.ChangeSet
@@ -23,9 +23,9 @@ import com.reviewhub.util.PathUtil
 import com.reviewhub.util.ReviewHubPaths
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.nio.file.Paths
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.CopyOnWriteArrayList
 
 @Service(Service.Level.PROJECT)
 class HubManager(private val project: Project) : Disposable {
@@ -49,7 +49,7 @@ class HubManager(private val project: Project) : Disposable {
         private set
 
     private var lastHubJsonTime: Long = 0L
-    private val listeners = mutableListOf<() -> Unit>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var pollingTimer: Timer? = null
 
     init {
@@ -89,9 +89,22 @@ class HubManager(private val project: Project) : Disposable {
     }
 
     private fun setupStoreListener() {
-        store.addChangeListener { _, _ ->
+        store.addChangeListener { ws, relPath ->
             ApplicationManager.getApplication().executeOnPooledThread {
                 if (!project.isDisposed) {
+                    if (relPath.isNotEmpty()) {
+                        val ioFile = File(ws, relPath)
+                        val lfs = LocalFileSystem.getInstance()
+                        if (ioFile.exists()) {
+                            lfs.refreshAndFindFileByIoFile(ioFile)?.refresh(true, false)
+                        } else {
+                            ioFile.parentFile?.let { parent ->
+                                lfs.refreshAndFindFileByIoFile(parent)?.refresh(true, true)
+                            }
+                        }
+                    } else {
+                        VirtualFileManager.getInstance().asyncRefresh(null)
+                    }
                     refresh()
                 }
             }

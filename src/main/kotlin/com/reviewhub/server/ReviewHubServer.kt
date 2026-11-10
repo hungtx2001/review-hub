@@ -354,7 +354,7 @@ class ReviewHubServer(
                         putJsonArray("tools") {
                             add(toolSchema(
                                 "propose_edit",
-                                "Stage a partial file edit for IDE review (prefer over propose_write for existing files).",
+                                "Stage a partial file edit for IDE review and sync to disk for build/test (prefer over propose_write for existing files).",
                                 mapOf(
                                     "path" to "string",
                                     "old_string" to "string",
@@ -365,7 +365,7 @@ class ReviewHubServer(
                             ))
                             add(toolSchema(
                                 "propose_write",
-                                "Stage a new file or full file replacement for IDE review.",
+                                "Stage a new file or full file replacement for IDE review and sync to disk for build/test.",
                                 mapOf(
                                     "path" to "string",
                                     "content" to "string"
@@ -374,7 +374,7 @@ class ReviewHubServer(
                             ))
                             add(toolSchema(
                                 "propose_delete",
-                                "Stage a file deletion for IDE review.",
+                                "Stage a file deletion for IDE review and remove from disk for build/test.",
                                 mapOf("path" to "string"),
                                 listOf("path")
                             ))
@@ -399,6 +399,18 @@ class ReviewHubServer(
                                 "Get staged hunks for a changeId.",
                                 mapOf("changeId" to "string"),
                                 listOf("changeId")
+                            ))
+                            add(toolSchema(
+                                "get_review_status",
+                                "Get review status and pending/accepted/rejected hunk counts for workspace or specific file.",
+                                mapOf("path" to "string", "changeId" to "string"),
+                                emptyList()
+                            ))
+                            add(toolSchema(
+                                "rollback_checkpoint",
+                                "Revert all AI edits in the workspace back to the initial checkpoint baseline.",
+                                emptyMap(),
+                                emptyList()
                             ))
                         }
                     }
@@ -488,11 +500,22 @@ class ReviewHubServer(
                 val replaceAll = args["replace_all"]?.jsonPrimitive?.booleanOrNull ?: false
                 val currentText = store.readFile(targetWs, targetPath)
 
-                val replaced = FuzzyMatchUtil.findAndReplace(currentText, oldString, newString, replaceAll)
+                val replaced = if (oldString.isEmpty() && currentText.isEmpty()) {
+                    newString
+                } else {
+                    FuzzyMatchUtil.findAndReplace(currentText, oldString, newString, replaceAll)
+                }
+
                 if (replaced == null) {
+                    val fileExists = File(targetWs, targetPath).exists() || store.findChangeByPath(targetWs, targetPath) != null
+                    val errMsg = if (!fileExists) {
+                        "File does not exist: $targetPath (use propose_write to create a new file)"
+                    } else {
+                        "Target old_string not found in file: $targetPath (${currentText.lines().size} lines)"
+                    }
                     return compactJson.encodeToString(buildJsonObject {
                         put("status", "error")
-                        put("error", "Target old_string not found in file: $targetPath")
+                        put("error", errMsg)
                     })
                 }
 
@@ -501,6 +524,7 @@ class ReviewHubServer(
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
                     put("hunks", cs.hunks.size)
+                    put("diskSynced", true)
                 })
             }
 
@@ -511,6 +535,7 @@ class ReviewHubServer(
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
                     put("hunks", cs.hunks.size)
+                    put("diskSynced", true)
                 })
             }
 
@@ -520,6 +545,7 @@ class ReviewHubServer(
                     put("status", "staged_for_review")
                     put("changeId", cs.id)
                     put("deleted", true)
+                    put("diskSynced", true)
                 })
             }
 

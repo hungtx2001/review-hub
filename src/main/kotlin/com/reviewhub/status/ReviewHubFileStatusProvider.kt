@@ -15,6 +15,10 @@ class ReviewHubFileStatusProvider(private val project: Project) : FileStatusProv
             PathUtil.pathsMatch(it.path, relPath) && it.status != "resolved"
         } ?: return null
 
-        return if (change.applied) FileStatus.MODIFIED else FileStatus.ADDED
+        return when {
+            !change.proposedExists -> FileStatus.DELETED
+            !change.baselineExists -> FileStatus.ADDED
+            else -> FileStatus.MODIFIED
+        }
     }
 }

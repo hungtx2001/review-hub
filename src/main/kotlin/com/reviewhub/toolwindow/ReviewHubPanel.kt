@@ -25,12 +25,15 @@ import com.reviewhub.inline.ReviewHubInlineReview
 import com.reviewhub.model.ChangeSummary
 import java.awt.BorderLayout
 import java.awt.Color
+import java.awt.Cursor
+import java.awt.FlowLayout
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
 import javax.swing.DefaultListModel
+import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JPanel
@@ -47,12 +50,17 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
             SimpleTextAttributes.STYLE_BOLD,
             JBColor(Color(0xC6, 0x28, 0x28), Color(0xF8, 0x71, 0x71))
         )
+        private val STRIKEOUT_ATTR = SimpleTextAttributes(
+            SimpleTextAttributes.STYLE_STRIKEOUT,
+            JBColor(Color(0x8C, 0x95, 0x9F), Color(0x8B, 0x94, 0x9E))
+        )
     }
 
     private val hubManager = project.getService(HubManager::class.java)
     private val listModel = DefaultListModel<ChangeSummary>()
     private val changeList = JBList(listModel)
     private val statusLabel = JLabel("Ready")
+    private val quickActionsPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply { isOpaque = false }
 
     init {
         setupToolbar()
@@ -85,14 +93,22 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                 val fileName = ioFile.name
                 val dirPath = ioFile.parent?.replace('\\', '/')
 
-                icon = if (value.status == "applied") {
-                    AllIcons.Actions.Commit
-                } else {
-                    FileTypeManager.getInstance().getFileTypeByFileName(fileName).icon
+                icon = when {
+                    value.status == "applied" -> AllIcons.Actions.Commit
+                    !value.proposedExists -> AllIcons.Actions.GC
+                    else -> FileTypeManager.getInstance().getFileTypeByFileName(fileName).icon
                         ?: AllIcons.FileTypes.Any_type
                 }
 
-                append(fileName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                if (!value.proposedExists) {
+                    append(fileName, STRIKEOUT_ATTR)
+                    append("  [DELETED]", RED_ATTR)
+                } else {
+                    append(fileName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                    if (!value.baselineExists) {
+                        append("  [NEW]", GREEN_ATTR)
+                    }
+                }
 
                 if (!dirPath.isNullOrEmpty()) {
                     append("  $dirPath", SimpleTextAttributes.GRAYED_ATTRIBUTES)
@@ -115,7 +131,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
                     append("  (${value.pending})", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
                 }
 
-                toolTipText = "${value.path} (+${value.added} -${value.removed}, ${value.pending} pending hunk(s))"
+                toolTipText = "${value.path} (+${value.added} -${value.removed}, ${value.pending} pending hunk(s)) — Left-click: Open | Space: Diff | Alt+A: Accept | Del: Reject"
             }
         }
 
@@ -137,16 +153,22 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         changeList.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 val selected = changeList.selectedValue ?: return
-                when (e.keyCode) {
-                    KeyEvent.VK_ENTER -> {
+                when {
+                    e.keyCode == KeyEvent.VK_ENTER -> {
                         e.consume()
                         openRealFile(selected)
                     }
-                    KeyEvent.VK_SPACE -> {
+                    e.keyCode == KeyEvent.VK_SPACE -> {
                         e.consume()
                         ReviewHubDiffViewer.showDiff(project, selected)
                     }
-                    KeyEvent.VK_DELETE, KeyEvent.VK_BACK_SPACE -> {
+                    e.isAltDown && e.keyCode == KeyEvent.VK_A -> {
+                        e.consume()
+                        acceptSingleItem(selected)
+                    }
+                    (e.isAltDown && e.keyCode == KeyEvent.VK_R) ||
+                        e.keyCode == KeyEvent.VK_DELETE ||
+                        e.keyCode == KeyEvent.VK_BACK_SPACE -> {
                         e.consume()
                         rejectSingleItem(selected)
                     }
@@ -155,14 +177,43 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         })
 
         changeList.emptyText.text = "No pending changes"
-        changeList.emptyText.appendLine("Edits proposed by AI coding agents will appear here for review.", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
+        changeList.emptyText.appendLine("AI edits are live-synced to disk for builds & staged here for review.", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
 
         val contentPanel = JPanel(BorderLayout())
         contentPanel.add(JBScrollPane(changeList), BorderLayout.CENTER)
 
+        val acceptAllBtn = JButton("✓ Accept All").apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            font = font.deriveFont(11f)
+            toolTipText = "Accept all pending files in workspace"
+            addActionListener { hubManager.acceptAll() }
+        }
+        val rejectAllBtn = JButton("✕ Reject All").apply {
+            isFocusable = false
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            font = font.deriveFont(11f)
+            toolTipText = "Reject all pending files and restore baseline"
+            addActionListener {
+                val confirm = Messages.showYesNoDialog(
+                    project,
+                    "Reject all pending changes and restore baseline on disk?",
+                    "Reject All Changes",
+                    Messages.getWarningIcon()
+                )
+                if (confirm == Messages.YES) {
+                    hubManager.rejectAll()
+                }
+            }
+        }
+        quickActionsPanel.add(acceptAllBtn)
+        quickActionsPanel.add(rejectAllBtn)
+        quickActionsPanel.isVisible = false
+
         val bottomPanel = JPanel(BorderLayout())
         bottomPanel.border = EmptyBorder(6, 10, 6, 10)
         bottomPanel.add(statusLabel, BorderLayout.WEST)
+        bottomPanel.add(quickActionsPanel, BorderLayout.EAST)
         contentPanel.add(bottomPanel, BorderLayout.SOUTH)
 
         setContent(contentPanel)
@@ -204,7 +255,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 val file = File(workspace, item.path)
-                val vf = LocalFileSystem.getInstance().findFileByIoFile(file)
+                val vf = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file)
                 if (vf != null) {
                     if (!file.exists()) {
                         FileEditorManager.getInstance(project).closeFile(vf)
@@ -223,7 +274,7 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
     private fun showContextMenu(e: MouseEvent, item: ChangeSummary) {
         val menu = JBPopupMenu()
 
-        val openItem = JBMenuItem("Open in Editor", AllIcons.Actions.Edit)
+        val openItem = JBMenuItem(if (!item.proposedExists) "Inspect Deleted File (Diff)" else "Open in Editor", AllIcons.Actions.Edit)
         openItem.addActionListener {
             openRealFile(item)
         }
@@ -237,13 +288,13 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
         menu.addSeparator()
 
-        val acceptItem = JBMenuItem("Accept File", AllIcons.Actions.Checked)
+        val acceptItem = JBMenuItem("Accept File (Alt+A)", AllIcons.Actions.Checked)
         acceptItem.addActionListener {
             acceptSingleItem(item)
         }
         menu.add(acceptItem)
 
-        val rejectItem = JBMenuItem("Reject File", AllIcons.Actions.Cancel)
+        val rejectItem = JBMenuItem("Reject File (Del)", AllIcons.Actions.Cancel)
         rejectItem.addActionListener {
             rejectSingleItem(item)
         }
@@ -253,50 +304,28 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
         val acceptAllItem = JBMenuItem("Accept All Changes", AllIcons.Actions.Checked)
         acceptAllItem.addActionListener {
-            val workspace = project.basePath ?: return@addActionListener
             val confirm = Messages.showYesNoDialog(
                 project,
-                "Accept all pending changes and write them to disk?",
+                "Accept all pending changes in workspace?",
                 "Accept All",
                 Messages.getQuestionIcon()
             )
             if (confirm == Messages.YES) {
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    for (c in hubManager.changes) {
-                        hubManager.acceptChange(changeId = c.id, workspace = workspace)
-                    }
-                    hubManager.refresh()
-                    ApplicationManager.getApplication().invokeLater {
-                        if (project.isDisposed) return@invokeLater
-                        ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
-                        VirtualFileManager.getInstance().asyncRefresh(null)
-                    }
-                }
+                hubManager.acceptAll()
             }
         }
         menu.add(acceptAllItem)
 
         val rejectAllItem = JBMenuItem("Reject All Changes", AllIcons.Actions.Cancel)
         rejectAllItem.addActionListener {
-            val workspace = project.basePath ?: return@addActionListener
             val confirm = Messages.showYesNoDialog(
                 project,
-                "Reject all pending changes and restore baseline?",
+                "Reject all pending changes and restore baseline on disk?",
                 "Reject All",
                 Messages.getWarningIcon()
             )
             if (confirm == Messages.YES) {
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    for (c in hubManager.changes) {
-                        hubManager.rejectChange(changeId = c.id, workspace = workspace)
-                    }
-                    hubManager.refresh()
-                    ApplicationManager.getApplication().invokeLater {
-                        if (project.isDisposed) return@invokeLater
-                        ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
-                        VirtualFileManager.getInstance().asyncRefresh(null)
-                    }
-                }
+                hubManager.rejectAll()
             }
         }
         menu.add(rejectAllItem)
@@ -337,6 +366,8 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         for (item in list) {
             listModel.addElement(item)
         }
+
+        quickActionsPanel.isVisible = list.isNotEmpty()
 
         if (hubManager.client == null) {
             statusLabel.text = "Review Hub: Connecting..."

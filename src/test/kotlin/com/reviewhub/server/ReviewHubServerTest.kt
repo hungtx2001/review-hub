@@ -1,7 +1,6 @@
 package com.reviewhub.server
 
 import com.reviewhub.core.ChangeStore
-import com.reviewhub.core.HunkDiff
 import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -97,15 +96,17 @@ class ReviewHubServerTest {
             assertTrue(body.contains("propose_edit"))
             assertTrue(body.contains("propose_write"))
             assertTrue(body.contains("read_file"))
+            assertTrue(body.contains("get_review_status"))
+            assertTrue(body.contains("rollback_checkpoint"))
         }
     }
 
     @Test
-    fun testMcpProposeAndAccept() {
+    fun testMcpProposeLiveDiskSyncAndAccept() {
         val sampleFile = File(workspaceDir, "Hello.kt")
         sampleFile.writeText("fun main() {\n    println(\"Hello World\")\n}\n")
 
-        // 1. Propose write
+        // 1. Propose edit
         val proposeCall = """
         {
           "jsonrpc": "2.0",
@@ -137,11 +138,12 @@ class ReviewHubServerTest {
             val toolRes = json.parseToJsonElement(contentText).jsonObject
             changeId = toolRes["changeId"]?.jsonPrimitive?.content ?: ""
             assertTrue(changeId.isNotEmpty())
+            assertEquals(true, toolRes["diskSynced"]?.jsonPrimitive?.booleanOrNull)
         }
 
-        // Check that disk is still untouched (staged in review hub!)
-        val onDiskBefore = sampleFile.readText()
-        assertTrue(onDiskBefore.contains("Hello World"))
+        // Check that disk is immediately synced so AI build/run/test tools see the new code
+        val onDiskDuringStaging = sampleFile.readText()
+        assertTrue(onDiskDuringStaging.contains("Hello Review Hub"))
 
         // Check read_file returns staged content and supports start_line/end_line
         val staged = store.readFile(workspaceDir.absolutePath, "Hello.kt")
@@ -174,13 +176,14 @@ class ReviewHubServerTest {
             assertTrue(resp.isSuccessful)
         }
 
-        // Now disk has been accepted and written!
+        // Disk retains accepted content and change list is now empty
         val onDiskAfter = sampleFile.readText()
         assertTrue(onDiskAfter.contains("Hello Review Hub"))
+        assertTrue(store.listChanges(workspaceDir.absolutePath).isEmpty())
     }
 
     @Test
-    fun testMcpProposeDeleteAndAbsolutePathRouting() {
+    fun testMcpProposeDeleteAndRejectRestoresFile() {
         val fileToDelete = File(workspaceDir, "Obsolete.kt")
         fileToDelete.writeText("class Obsolete")
 
@@ -215,17 +218,17 @@ class ReviewHubServerTest {
             assertTrue(changeId.isNotEmpty())
         }
 
-        // File still exists before accept
-        assertTrue(fileToDelete.exists())
+        // File is deleted on disk during staging so AI builds verify deletion
+        assertFalse(fileToDelete.exists())
 
-        // Accept the deletion
-        val acceptCall = """
+        // Rejecting the deletion restores the file on disk from baseline snapshot
+        val rejectCall = """
         {
           "jsonrpc": "2.0",
           "id": 6,
           "method": "tools/call",
           "params": {
-            "name": "accept",
+            "name": "reject",
             "arguments": {
               "changeId": "$changeId"
             }
@@ -235,14 +238,14 @@ class ReviewHubServerTest {
 
         val req2 = Request.Builder()
             .url("http://127.0.0.1:${server.port}/mcp")
-            .post(acceptCall.toRequestBody("application/json".toMediaType()))
+            .post(rejectCall.toRequestBody("application/json".toMediaType()))
             .build()
 
         client.newCall(req2).execute().use { resp ->
             assertTrue(resp.isSuccessful)
         }
 
-        assertFalse("File should be deleted from disk after accepting propose_delete", fileToDelete.exists())
+        assertTrue("File should be restored to disk after rejecting propose_delete", fileToDelete.exists())
+        assertEquals("class Obsolete", fileToDelete.readText())
     }
 }
-
