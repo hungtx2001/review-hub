@@ -1,11 +1,11 @@
 # Review Hub for JetBrains IDEs
 
-[![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-Review%20Hub-blue.svg?logo=intellijidea)](https://plugins.jetbrains.com/plugin/35679-review-hub/versions/stable)
-[![Version](https://img.shields.io/jetbrains/plugin/v/35679-review-hub.svg)](https://plugins.jetbrains.com/plugin/35679-review-hub/versions/stable)
+[![JetBrains Marketplace](https://img.shields.io/badge/JetBrains%20Marketplace-Review%20Hub-blue.svg?logo=intellijidea)](https://plugins.jetbrains.com/plugin/35679-review-hub)
+[![Version](https://img.shields.io/jetbrains/plugin/v/35679-review-hub.svg)](https://plugins.jetbrains.com/plugin/35679-review-hub)
 
-The official Review Hub plugin for IntelliJ IDEA, WebStorm, PyCharm, CLion, GoLand, Android Studio, PhpStorm, Rider, RustRover, and all other JetBrains IDEs. Available on the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35679-review-hub/versions/stable).
+The official Review Hub plugin for IntelliJ IDEA, WebStorm, PyCharm, CLion, GoLand, Android Studio, PhpStorm, Rider, RustRover, and all other JetBrains IDEs. Available on the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35679-review-hub).
 
-Review Hub provides a **Decide-to-Disk** review workflow for AI coding assistants (Claude Code, OpenAI Codex CLI, Cursor, Windsurf, OpenCode, Cline, Roo Code, etc.). AI suggestions are staged in memory, allowing you to review, accept, or reject each hunk granularly before any changes are written to disk.
+Review Hub provides a **Shadow Baseline + Live Disk Sync** review workflow for AI coding assistants (Claude Code, OpenAI Codex CLI, Cursor, Windsurf, OpenCode, Cline, Roo Code, Antigravity, etc.). Original baselines are safely snapshotted in a content-addressed store (CAS) while proposed changes are live-synced to disk so your AI agent's build, test, and linter commands run against the new code — and you can still accept or reject each hunk or file granularly at any time.
 
 ![Review Hub ToolWindow](docs/images/panel-overview.png)
 

@@ -11,6 +11,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- JetBrains Marketplace Official Widget -->
+  <script src="https://plugins.jetbrains.com/assets/scripts/mp-widget.js"></script>
 
   <script>
     tailwind.config = {
@@ -52,7 +54,7 @@
       </nav>
 
       <div>
-        <a href="https://plugins.jetbrains.com/plugin/35679-review-hub/versions/stable" target="_blank" rel="noopener" class="text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 transition inline-flex items-center gap-1.5">
+        <a href="https://plugins.jetbrains.com/plugin/35679-review-hub" target="_blank" rel="noopener" class="text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 transition inline-flex items-center gap-1.5">
           <span>Marketplace</span>
           <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
         </a>
@@ -66,7 +68,7 @@
       
       <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-300 mb-8">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        Embedded MCP Server for JetBrains IDEs
+        Embedded MCP Server for JetBrains IDEs (2024.1 &ndash; 2026.3+)
       </div>
 
       <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white mb-6 leading-[1.15]">
@@ -77,14 +79,17 @@
       </h1>
 
       <p class="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-        Stop AI from silently overwriting your files. Review Hub stages AI edits in memory so you can inspect, navigate, and accept changes hunk-by-hunk directly inside your IDE.
+        Never lose control of your codebase. Review Hub snapshots your original baseline while syncing AI edits for live builds &amp; tests, letting you accept or reject changes hunk-by-hunk directly inside your IDE.
       </p>
 
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
-        <a href="https://plugins.jetbrains.com/plugin/35679-review-hub/versions/stable" target="_blank" rel="noopener" class="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-xl shadow-sky-500/20 transition flex items-center justify-center gap-2">
-          <i data-lucide="puzzle" class="w-5 h-5"></i>
-          <span>Get on JetBrains Marketplace</span>
-        </a>
+        <!-- Official JetBrains Embeddable "Install Plugin" Button -->
+        <div id="jb-install-btn" class="flex items-center justify-center min-h-[48px]">
+          <a href="https://plugins.jetbrains.com/plugin/35679-review-hub" target="_blank" rel="noopener" class="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-xl shadow-sky-500/20 transition flex items-center justify-center gap-2">
+            <i data-lucide="puzzle" class="w-5 h-5"></i>
+            <span>Get from Marketplace</span>
+          </a>
+        </div>
         <a href="#quickstart" class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-200 transition flex items-center justify-center gap-2">
           <i data-lucide="terminal" class="w-4 h-4 text-sky-400"></i>
           Quickstart Guide
@@ -107,19 +112,22 @@
         </div>
 
         <!-- Floating Editor Action Bar -->
-        <div class="bg-[#21262d] px-4 py-2 border-b border-slate-800 flex items-center gap-2">
-          <button class="px-2.5 py-1 text-xs font-medium rounded bg-emerald-600 text-white flex items-center gap-1.5 shadow-sm">
-            <i data-lucide="check" class="w-3.5 h-3.5"></i> Accept File
-          </button>
-          <button class="px-2.5 py-1 text-xs font-medium rounded bg-rose-600/90 text-white flex items-center gap-1.5 shadow-sm">
-            <i data-lucide="x" class="w-3.5 h-3.5"></i> Reject File
-          </button>
-          <button class="px-2.5 py-1 text-xs font-medium rounded bg-slate-700 text-slate-200 flex items-center gap-1 hover:bg-slate-600">
-            <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i> Next Hunk
-          </button>
-          <button class="px-2.5 py-1 text-xs font-medium rounded bg-slate-700 text-slate-200 flex items-center gap-1 hover:bg-slate-600">
-            <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i> Prev Hunk
-          </button>
+        <div class="bg-[#21262d] px-4 py-2 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+          <div class="flex items-center gap-2">
+            <button class="px-2.5 py-1 text-xs font-medium rounded bg-emerald-600 text-white flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i> Accept File
+            </button>
+            <button class="px-2.5 py-1 text-xs font-medium rounded bg-rose-600/90 text-white flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i> Reject File
+            </button>
+            <button class="px-2.5 py-1 text-xs font-medium rounded bg-slate-700 text-slate-200 flex items-center gap-1 hover:bg-slate-600">
+              <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i> Next Hunk
+            </button>
+            <button class="px-2.5 py-1 text-xs font-medium rounded bg-slate-700 text-slate-200 flex items-center gap-1 hover:bg-slate-600">
+              <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i> Prev Hunk
+            </button>
+          </div>
+          <span class="text-[11px] font-mono text-slate-400">File 1/2 &bull; 1 pending &bull; Alt+A Accept &nbsp;Alt+R Reject</span>
         </div>
 
         <!-- Code Content with Inlay Diff -->
@@ -133,16 +141,17 @@
             <span class="text-emerald-400 font-semibold cursor-pointer hover:underline flex items-center gap-1">✓Accept</span>
             <span class="text-slate-600">|</span>
             <span class="text-rose-400 font-semibold cursor-pointer hover:underline flex items-center gap-1">✕Reject</span>
+            <span class="text-slate-500">#1/1 (-1 +1)</span>
           </div>
 
-          <!-- Red Line (Deleted) -->
-          <div class="bg-[#4c1c24] text-rose-300 pl-8 py-0.5 border-l-4 border-rose-500/70">
-            - val success = paymentGateway.charge(orderId, amount)
+          <!-- Red Line (Block Inlay Deleted) -->
+          <div class="bg-[#3d191e] text-rose-300 pl-8 py-0.5 border-l-4 border-rose-500/80">
+            val success = paymentGateway.charge(orderId, amount)
           </div>
 
           <!-- Green Line (Added) -->
-          <div class="bg-[#1f3e24] text-emerald-300 pl-8 py-0.5 border-l-4 border-emerald-500">
-            + val success = paymentGateway.chargeWithRetry(orderId, amount, maxRetries = 3)
+          <div class="bg-[#1b3822] text-emerald-300 pl-8 py-0.5 border-l-4 border-emerald-500">
+            val success = paymentGateway.chargeWithRetry(orderId, amount, maxRetries = 3)
           </div>
 
           <div class="text-slate-300 pl-8">return success</div>
@@ -158,8 +167,8 @@
   <section id="features" class="py-20 border-t border-slate-800 bg-[#0b0d13]">
     <div class="max-w-6xl mx-auto px-6">
       <div class="text-center max-w-2xl mx-auto mb-14">
-        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">Engineered for Safety & Developer Speed</h2>
-        <p class="text-sm sm:text-base text-slate-400">Review AI changes natively without corrupted git working trees or broken builds.</p>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">Engineered for Safety &amp; Developer Speed</h2>
+        <p class="text-sm sm:text-base text-slate-400">Let AI compile and run tests on live files while keeping 100% control over every line.</p>
       </div>
 
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -169,9 +178,9 @@
           <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 mb-4">
             <i data-lucide="shield-check" class="w-5 h-5"></i>
           </div>
-          <h3 class="text-base font-bold text-white mb-1.5">In-Memory Staging</h3>
+          <h3 class="text-base font-bold text-white mb-1.5">Shadow Baseline + Live Sync</h3>
           <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-            AI edits stage safely via port 49182. Your disk and build stay completely untouched until you accept.
+            Pre-AI baselines are snapshotted in CAS while proposed edits sync to disk so compilers and test runners work natively.
           </p>
         </div>
 
@@ -180,9 +189,9 @@
           <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4">
             <i data-lucide="split" class="w-5 h-5"></i>
           </div>
-          <h3 class="text-base font-bold text-white mb-1.5">In-Editor Inline Diff</h3>
+          <h3 class="text-base font-bold text-white mb-1.5">Block-Inlay Inline Diff</h3>
           <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-            Hunks display with syntax highlighting, gutter markers, and single-click <code class="text-xs text-emerald-400">✓Accept | ✕Reject</code> inlays.
+            Deleted lines render in non-intrusive Block Inlays with <code class="text-xs text-emerald-400">✓Accept | ✕Reject</code> pills &mdash; zero false syntax errors.
           </p>
         </div>
 
@@ -191,9 +200,9 @@
           <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4">
             <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
           </div>
-          <h3 class="text-base font-bold text-white mb-1.5">One-Click Rollback</h3>
+          <h3 class="text-base font-bold text-white mb-1.5">Instant Reject &amp; Rollback</h3>
           <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-            Automatic checkpoint snapshots let you revert an entire AI session back to baseline with peace of mind.
+            Reject any individual hunk or revert an entire AI session back to checkpoint baseline in under a millisecond.
           </p>
         </div>
 
@@ -204,7 +213,7 @@
           </div>
           <h3 class="text-base font-bold text-white mb-1.5">Universal MCP Bridge</h3>
           <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-            Works out of the box with Claude Code, Antigravity, OpenCode, Aider, Cursor, and Cline via Model Context Protocol.
+            Works out of the box with Claude Code, Antigravity, OpenAI Codex, OpenCode, Cursor, Windsurf, Cline &amp; Roo.
           </p>
         </div>
 
@@ -229,24 +238,11 @@
               <span class="w-7 h-7 rounded-full bg-sky-500/10 text-sky-400 font-mono text-xs font-bold flex items-center justify-center border border-sky-500/30">1</span>
               <h3 class="text-base font-bold text-white">Install Review Hub in IDE</h3>
             </div>
-            <p class="text-sm text-slate-400 mb-3 leading-relaxed">
-              Open your JetBrains IDE and install directly from the Marketplace:
+            <p class="text-sm text-slate-400 mb-4 leading-relaxed">
+              Install directly from the official JetBrains Marketplace card below or via <code class="text-xs text-slate-300">Settings &rarr; Plugins</code>:
             </p>
-            <div class="bg-black/60 p-4 rounded-xl text-xs font-mono text-slate-300 leading-relaxed border border-slate-800 space-y-2">
-              <div class="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800/80">
-                <span>Shortcut</span>
-                <span class="text-slate-200 bg-slate-800 px-2 py-0.5 rounded">Ctrl+Alt+S / ⌘,</span>
-              </div>
-              <div class="flex items-center gap-2 pt-1 text-slate-300">
-                <span class="text-sky-400 font-semibold">1.</span> Plugins &rarr; Marketplace tab
-              </div>
-              <div class="flex items-center gap-2 text-slate-300">
-                <span class="text-sky-400 font-semibold">2.</span> Search <span class="text-emerald-400 font-semibold">"Review Hub"</span>
-              </div>
-              <div class="flex items-center gap-2 text-slate-300">
-                <span class="text-sky-400 font-semibold">3.</span> Click <span class="text-sky-400 font-semibold">Install</span> &bull; No restart needed
-              </div>
-            </div>
+            <!-- Official JetBrains Embeddable Plugin Card -->
+            <div id="jb-plugin-card" class="rounded-xl overflow-hidden flex justify-center bg-white/5 p-2 min-h-[140px]"></div>
           </div>
           <div class="mt-4 pt-3 flex items-center gap-2 text-xs text-slate-400 border-t border-slate-800/80">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -267,7 +263,7 @@
               </button>
             </div>
             <p class="text-sm text-slate-400 mb-3">
-              Add to your agent's config (<code class="text-xs text-slate-300">claude.json</code>, <code class="text-xs text-slate-300">cline_mcp_settings.json</code>):
+              Use <span class="text-slate-200 font-medium">Tools &rarr; Review Hub &rarr; Configure AI Tools (MCP)</span> for 1-click setup, or add to your agent config:
             </p>
             <pre class="bg-black/60 p-4 rounded-xl text-xs text-slate-300 font-mono overflow-x-auto leading-relaxed border border-slate-800">
 {
@@ -280,7 +276,7 @@
           </div>
           <div class="mt-4 pt-3 flex items-center gap-2 text-xs text-slate-400 border-t border-slate-800/80">
             <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i>
-            <span>Works with Claude Code, Antigravity, Aider, Cline &amp; Roo</span>
+            <span>Works with Claude Code, Antigravity, Codex, OpenCode, Cline &amp; Roo</span>
           </div>
         </div>
 
@@ -291,17 +287,26 @@
   <!-- Footer -->
   <footer class="border-t border-slate-800 py-8 bg-[#090a0f] text-center text-xs text-slate-500">
     <div class="max-w-5xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-      <div>Review Hub &bull; Safe AI Code Review for JetBrains IDEs. Apache 2.0 License.</div>
+      <div>Review Hub &bull; Safe AI Code Review for JetBrains IDEs. MIT License.</div>
       <div class="flex items-center space-x-6">
         <a href="#features" class="hover:text-slate-400">Features</a>
         <a href="#quickstart" class="hover:text-slate-400">Quickstart</a>
-        <a href="https://plugins.jetbrains.com/plugin/35679-review-hub/versions/stable" target="_blank" rel="noopener" class="hover:text-slate-400">Marketplace</a>
+        <a href="https://plugins.jetbrains.com/plugin/35679-review-hub" target="_blank" rel="noopener" class="hover:text-slate-400">Marketplace</a>
       </div>
     </div>
   </footer>
 
   <script>
     lucide.createIcons();
+
+    if (typeof MarketplaceWidget !== 'undefined') {
+      const installTarget = document.getElementById('jb-install-btn');
+      if (installTarget) {
+        installTarget.innerHTML = '';
+        MarketplaceWidget.setupMarketplaceWidget('install', 35679, "#jb-install-btn");
+      }
+      MarketplaceWidget.setupMarketplaceWidget('card', 35679, "#jb-plugin-card");
+    }
 
     function copyConfig() {
       const configText = JSON.stringify({
