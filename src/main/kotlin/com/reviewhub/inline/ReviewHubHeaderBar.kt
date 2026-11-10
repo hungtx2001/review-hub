@@ -40,23 +40,23 @@ class ReviewHubHeaderBar(
             isOpaque = false
         }
 
-        val acceptFileBtn = createButton("✓ Accept File", AllIcons.Actions.Checked, "Accept all changes in this file (Ctrl+Alt+A)") {
+        val acceptFileBtn = createButton("Accept File", AllIcons.Actions.Checked, "Accept all changes in this file (Ctrl+Alt+A)") {
             ReviewHubInlineReview.decideCurrentFile(project, editor, "accept")
         }
         leftPanel.add(acceptFileBtn)
 
-        val rejectFileBtn = createButton("✕ Reject File", AllIcons.Actions.Cancel, "Reject all changes in this file and restore baseline (Ctrl+Alt+Z)") {
+        val rejectFileBtn = createButton("Reject File", AllIcons.Actions.Cancel, "Reject all changes in this file and restore baseline (Ctrl+Alt+Z)") {
             ReviewHubInlineReview.decideCurrentFile(project, editor, "reject")
         }
         leftPanel.add(rejectFileBtn)
 
         if (hunkCount > 1) {
-            val nextBtn = createButton("↓ Next Hunk", AllIcons.Actions.MoveDown, "Jump to next pending change (Alt+Down)") {
+            val nextBtn = createButton("Next Hunk", AllIcons.Actions.MoveDown, "Jump to next pending change (Alt+Down)") {
                 ReviewHubInlineReview.scrollToNextHunk(editor)
             }
             leftPanel.add(nextBtn)
 
-            val prevBtn = createButton("↑ Prev Hunk", AllIcons.Actions.MoveUp, "Jump to previous pending change (Alt+Up)") {
+            val prevBtn = createButton("Prev Hunk", AllIcons.Actions.MoveUp, "Jump to previous pending change (Alt+Up)") {
                 ReviewHubInlineReview.scrollToPrevHunk(editor)
             }
             leftPanel.add(prevBtn)
@@ -71,13 +71,13 @@ class ReviewHubHeaderBar(
         leftPanel.add(diffBtn)
 
         if (pendingFiles.size > 1) {
-            val prevFileBtn = createButton("◀ Prev File", null, "Open previous pending file") {
+            val prevFileBtn = createButton("Prev File", AllIcons.Actions.Back, "Open previous pending file") {
                 val prevIdx = if (fileIndex > 0) fileIndex - 1 else pendingFiles.size - 1
                 ReviewHubInlineReview.openReviewFile(project, pendingFiles[prevIdx].path)
             }
             leftPanel.add(prevFileBtn)
 
-            val nextFileBtn = createButton("Next File ▶", null, "Open next pending file") {
+            val nextFileBtn = createButton("Next File", AllIcons.Actions.Forward, "Open next pending file") {
                 val nextIdx = if (fileIndex in 0 until pendingFiles.size - 1) fileIndex + 1 else 0
                 ReviewHubInlineReview.openReviewFile(project, pendingFiles[nextIdx].path)
             }

@@ -182,14 +182,14 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         val contentPanel = JPanel(BorderLayout())
         contentPanel.add(JBScrollPane(changeList), BorderLayout.CENTER)
 
-        val acceptAllBtn = JButton("✓ Accept All").apply {
+        val acceptAllBtn = JButton("Accept All", AllIcons.Actions.Checked).apply {
             isFocusable = false
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             font = font.deriveFont(11f)
             toolTipText = "Accept all pending files in workspace"
             addActionListener { hubManager.acceptAll() }
         }
-        val rejectAllBtn = JButton("✕ Reject All").apply {
+        val rejectAllBtn = JButton("Reject All", AllIcons.Actions.Cancel).apply {
             isFocusable = false
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
             font = font.deriveFont(11f)
