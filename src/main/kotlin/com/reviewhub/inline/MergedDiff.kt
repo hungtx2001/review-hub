@@ -26,7 +26,8 @@ data class StagedHunkAnchor(
     val anchorLine: Int,
     val addedStartLine: Int,
     val addedEndLine: Int, // exclusive
-    val deletedLines: List<String>
+    val deletedLines: List<String>,
+    val showAbove: Boolean = true
 )
 
 data class StagedEditorView(
@@ -94,8 +95,10 @@ object MergedDiff {
 
         val maxValidLine = (lines.size - 1).coerceAtLeast(0)
         val clampedAnchors = rawAnchors.map { anchor ->
+            val isTrailingDeletion = anchor.anchorLine >= lines.size && lines.isNotEmpty()
             anchor.copy(
-                anchorLine = anchor.anchorLine.coerceIn(0, maxValidLine)
+                anchorLine = anchor.anchorLine.coerceIn(0, maxValidLine),
+                showAbove = !isTrailingDeletion
             )
         }
 

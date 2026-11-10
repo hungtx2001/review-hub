@@ -331,6 +331,45 @@ class HubManager(private val project: Project) : Disposable {
         }
     }
 
+    fun setCheckpoint(workspace: String = project.basePath ?: ""): Boolean {
+        if (workspace.isEmpty()) return false
+        return if (isLocalStore) {
+            store.setCheckpoint(workspace)
+            refresh()
+            true
+        } else {
+            val ok = client?.setCheckpoint(workspace) == true
+            refresh()
+            ok
+        }
+    }
+
+    fun clearCheckpoint(workspace: String = project.basePath ?: ""): Boolean {
+        if (workspace.isEmpty()) return false
+        return if (isLocalStore) {
+            val ok = store.clearCheckpoint(workspace)
+            refresh()
+            ok
+        } else {
+            val ok = client?.clearCheckpoint(workspace) == true
+            refresh()
+            ok
+        }
+    }
+
+    fun rollbackCheckpoint(workspace: String = project.basePath ?: ""): List<String> {
+        if (workspace.isEmpty()) return emptyList()
+        return if (isLocalStore) {
+            val restored = store.rollbackToCheckpoint(workspace)
+            refresh()
+            restored
+        } else {
+            val restored = client?.rollbackCheckpoint(workspace) ?: emptyList()
+            refresh()
+            restored
+        }
+    }
+
     fun findChange(relPath: String): ChangeSummary? {
         val map = pendingByNormPath
         if (map.isEmpty()) return null

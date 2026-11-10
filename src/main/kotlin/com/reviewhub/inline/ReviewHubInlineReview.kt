@@ -332,11 +332,22 @@ object ReviewHubInlineReview {
 
         for (anchor in stagedView.hunkAnchors) {
             val anchorLine = anchor.anchorLine.coerceIn(0, maxLine)
-            val anchorLineOffset = doc.getLineStartOffset(anchorLine)
+            val anchorLineOffset = if (doc.lineCount == 0) {
+                0
+            } else if (anchor.showAbove) {
+                doc.getLineStartOffset(anchorLine)
+            } else {
+                doc.getLineEndOffset(anchorLine)
+            }
 
             // Calculate indentation of the anchor line (or first deleted line)
-            val lineEndOffset = doc.getLineEndOffset(anchorLine)
-            val lineText = doc.charsSequence.subSequence(anchorLineOffset, lineEndOffset).toString()
+            val lineText = if (doc.lineCount == 0) {
+                ""
+            } else {
+                val startOff = doc.getLineStartOffset(anchorLine)
+                val endOff = doc.getLineEndOffset(anchorLine)
+                doc.charsSequence.subSequence(startOff, endOff).toString()
+            }
             val sampleLine = if (lineText.isNotBlank()) lineText else (anchor.deletedLines.firstOrNull { it.isNotBlank() } ?: lineText)
             val indent = sampleLine.takeWhile { it.isWhitespace() }
             val addedCount = (anchor.addedEndLine - anchor.addedStartLine).coerceAtLeast(0)
@@ -357,7 +368,7 @@ object ReviewHubInlineReview {
             val inlay = editor.inlayModel.addBlockElement(
                 anchorLineOffset,
                 false,
-                true,
+                anchor.showAbove,
                 0,
                 renderer
             )

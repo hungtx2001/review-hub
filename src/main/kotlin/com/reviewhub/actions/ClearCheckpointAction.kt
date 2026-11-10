@@ -12,12 +12,10 @@ class ClearCheckpointAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: return
         val workspace = project.basePath ?: return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val ok = client.clearCheckpoint(workspace)
-            hubManager.refresh()
+            val ok = hubManager.clearCheckpoint(workspace)
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 if (ok) {

@@ -36,6 +36,23 @@ class MergedDiffTest {
         assertEquals(4, a2.addedStartLine)
         assertEquals(5, a2.addedEndLine)
         assertEquals(listOf("old 4"), a2.deletedLines)
+        assertEquals(true, a2.showAbove)
+    }
+
+    @Test
+    fun `buildStagedView marks trailing pure deletion hunk with showAbove false`() {
+        val baseline = "line 1\nline 2\ntrailing deleted"
+        val hunks = listOf(
+            Hunk(id = "h1", oldStart = 2, oldLines = listOf("trailing deleted"), newStart = 2, newLines = emptyList(), decision = "pending")
+        )
+
+        val staged = MergedDiff.buildStagedView(baseline, hunks)
+        assertEquals(listOf("line 1", "line 2"), staged.lines)
+        assertEquals(1, staged.hunkAnchors.size)
+        val anchor = staged.hunkAnchors[0]
+        assertEquals(1, anchor.anchorLine)
+        assertEquals(false, anchor.showAbove)
+        assertEquals(listOf("trailing deleted"), anchor.deletedLines)
     }
 
     @Test

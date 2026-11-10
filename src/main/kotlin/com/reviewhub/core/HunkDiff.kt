@@ -269,8 +269,8 @@ object HunkDiff {
         return result
     }
 
-    fun resolve(baseline: String, hunks: List<Hunk>): String {
-        val lineSep = if (baseline.contains("\r\n")) "\r\n" else "\n"
+    fun resolve(baseline: String, hunks: List<Hunk>, fallbackLineSep: String = "\n"): String {
+        val lineSep = if (baseline.contains("\r\n")) "\r\n" else fallbackLineSep
         val baseLines = if (baseline.isEmpty()) emptyList() else baseline.split("\n").map { it.trimEnd('\r') }
         val resultLines = mutableListOf<String>()
 
@@ -309,8 +309,8 @@ object HunkDiff {
         return resultLines.joinToString(lineSep)
     }
 
-    fun resolveStaged(baseline: String, hunks: List<Hunk>): String {
-        val lineSep = if (baseline.contains("\r\n")) "\r\n" else "\n"
+    fun resolveStaged(baseline: String, hunks: List<Hunk>, fallbackLineSep: String = "\n"): String {
+        val lineSep = if (baseline.contains("\r\n")) "\r\n" else fallbackLineSep
         val baseLines = if (baseline.isEmpty()) emptyList() else baseline.split("\n").map { it.trimEnd('\r') }
         val resultLines = mutableListOf<String>()
 

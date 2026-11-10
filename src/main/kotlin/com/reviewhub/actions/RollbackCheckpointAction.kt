@@ -12,7 +12,6 @@ class RollbackCheckpointAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: return
         val workspace = project.basePath ?: return
 
         val confirm = Messages.showYesNoDialog(
@@ -24,7 +23,7 @@ class RollbackCheckpointAction : AnAction() {
         if (confirm != Messages.YES) return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val revertedFiles = client.rollbackCheckpoint(workspace)
+            val revertedFiles = hubManager.rollbackCheckpoint(workspace)
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 ReviewHubInlineReview.reloadAllOpenReviewEditors(project)

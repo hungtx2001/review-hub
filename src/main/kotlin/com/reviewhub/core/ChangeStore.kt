@@ -260,7 +260,8 @@ class ChangeStore {
         if (!proposedExists) {
             deleteFileOnDisk(absFile, File(normWs))
         } else {
-            val stagedDiskText = HunkDiff.resolveStaged(baselineContent, hunks)
+            val sep = if (content.contains("\r\n")) "\r\n" else "\n"
+            val stagedDiskText = HunkDiff.resolveStaged(baselineContent, hunks, sep)
             writeFileOnDisk(absFile, stagedDiskText)
         }
 
@@ -340,16 +341,17 @@ class ChangeStore {
         val allAccepted = updatedHunks.all { it.decision == "accepted" }
         val isDeletion = !cs.proposedExists && allAccepted
 
+        val propSep = if (cs.proposed.contains("\r\n")) "\r\n" else "\n"
         val resolvedContent = if (customContent != null && allDecided) {
-            if (cs.baseline.contains("\r\n") && !customContent.contains("\r\n")) {
+            if ((cs.baseline.contains("\r\n") || cs.proposed.contains("\r\n")) && !customContent.contains("\r\n")) {
                 customContent.replace("\n", "\r\n")
             } else {
                 customContent
             }
         } else if (allDecided) {
-            HunkDiff.resolve(cs.baseline, updatedHunks)
+            HunkDiff.resolve(cs.baseline, updatedHunks, propSep)
         } else {
-            HunkDiff.resolveStaged(cs.baseline, updatedHunks)
+            HunkDiff.resolveStaged(cs.baseline, updatedHunks, propSep)
         }
 
         // Write accepted/staged content to disk (or delete file if proposed deletion was accepted)
@@ -451,10 +453,11 @@ class ChangeStore {
         val anyAccepted = updatedHunks.any { it.decision == "accepted" }
 
         // If all hunks decided, resolve final content; otherwise resolve remaining staged content
+        val propSep = if (cs.proposed.contains("\r\n")) "\r\n" else "\n"
         val targetDiskContent = if (allDecided) {
-            HunkDiff.resolve(cs.baseline, updatedHunks)
+            HunkDiff.resolve(cs.baseline, updatedHunks, propSep)
         } else {
-            HunkDiff.resolveStaged(cs.baseline, updatedHunks)
+            HunkDiff.resolveStaged(cs.baseline, updatedHunks, propSep)
         }
 
         // Write restored baseline (or partially rejected state) back to disk immediately
