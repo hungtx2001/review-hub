@@ -25,6 +25,10 @@ object PathUtil {
         return normA.equals(normB, ignoreCase = true)
     }
 
+    fun normalizePathKey(path: String): String {
+        return path.replace('\\', '/').trim('/').lowercase()
+    }
+
     fun normalizeWorkspace(workspace: String): String {
         val norm = workspace.replace('\\', '/').trimEnd('/')
         if (norm.length >= 2 && norm[1] == ':' && norm[0].isLetter()) {

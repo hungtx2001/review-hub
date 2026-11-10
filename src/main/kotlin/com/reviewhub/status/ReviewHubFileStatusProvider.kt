@@ -9,11 +9,10 @@ import com.reviewhub.util.PathUtil
 
 class ReviewHubFileStatusProvider(private val project: Project) : FileStatusProvider {
     override fun getFileStatus(virtualFile: VirtualFile): FileStatus? {
-        val relPath = PathUtil.toRelativePath(project, virtualFile) ?: return null
         val hubManager = project.getService(HubManager::class.java)
-        val change = hubManager.changes.find {
-            PathUtil.pathsMatch(it.path, relPath) && it.status != "resolved"
-        } ?: return null
+        if (!hubManager.hasPendingChanges) return null
+        val relPath = PathUtil.toRelativePath(project, virtualFile) ?: return null
+        val change = hubManager.findChange(relPath) ?: return null
 
         return when {
             !change.proposedExists -> FileStatus.DELETED

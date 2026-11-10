@@ -10,12 +10,13 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 class ChangeStore {
 
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; isLenient = true }
+    private val json = Json { prettyPrint = false; ignoreUnknownKeys = true; isLenient = true }
 
     // workspacePath -> (changeId -> ChangeSet)
     private val changesByWorkspace = ConcurrentHashMap<String, ConcurrentHashMap<String, ChangeSet>>()
@@ -300,13 +301,30 @@ class ChangeStore {
             val normWs = normalizeWorkspace(workspace)
             ensureWorkspaceLoaded(normWs)
             val allIds = changesByWorkspace[normWs]?.keys?.toList() ?: emptyList()
+            if (allIds.isEmpty()) {
+                return DecideResult(changeId = "all", status = "applied", resolved = true, remaining = 0)
+            }
             var lastResult: DecideResult? = null
             for (id in allIds) {
-                lastResult = accept(changeId = id, workspace = normWs)
+                lastResult = acceptInternal(changeId = id, workspace = normWs, batchMode = true)
             }
+            persistCheckpoint(normWs)
+            persistStaging(normWs)
+            pruneUnusedBlobs(normWs)
+            notifyChange(normWs, "")
             return lastResult ?: DecideResult(changeId = "all", status = "applied", resolved = true, remaining = 0)
         }
+        return acceptInternal(changeId, workspace, path, hunkIds, customContent, batchMode = false)
+    }
 
+    private fun acceptInternal(
+        changeId: String? = null,
+        workspace: String? = null,
+        path: String? = null,
+        hunkIds: List<String>? = null,
+        customContent: String? = null,
+        batchMode: Boolean = false
+    ): DecideResult? {
         val cs = resolveTargetChangeSet(changeId, workspace, path) ?: return null
         val normWs = cs.workspace
 
@@ -362,14 +380,18 @@ class ChangeStore {
             } else {
                 cp.files[cs.path] = putBaselineBlob(normWs, resolvedContent)
             }
-            persistCheckpoint(normWs)
-            pruneUnusedBlobs(normWs)
+            if (!batchMode) {
+                persistCheckpoint(normWs)
+                pruneUnusedBlobs(normWs)
+            }
         } else {
             wsMap?.put(cs.id, updatedCs)
         }
 
-        persistStaging(normWs)
-        notifyChange(normWs, cs.path)
+        if (!batchMode) {
+            persistStaging(normWs)
+            notifyChange(normWs, cs.path)
+        }
 
         val remaining = updatedHunks.count { it.decision == "pending" }
         return DecideResult(
@@ -391,13 +413,29 @@ class ChangeStore {
             val normWs = normalizeWorkspace(workspace)
             ensureWorkspaceLoaded(normWs)
             val allIds = changesByWorkspace[normWs]?.keys?.toList() ?: emptyList()
+            if (allIds.isEmpty()) {
+                return DecideResult(changeId = "all", status = "rejected", resolved = true, remaining = 0)
+            }
             var lastResult: DecideResult? = null
             for (id in allIds) {
-                lastResult = reject(changeId = id, workspace = normWs)
+                lastResult = rejectInternal(changeId = id, workspace = normWs, batchMode = true)
             }
+            persistCheckpoint(normWs)
+            persistStaging(normWs)
+            pruneUnusedBlobs(normWs)
+            notifyChange(normWs, "")
             return lastResult ?: DecideResult(changeId = "all", status = "rejected", resolved = true, remaining = 0)
         }
+        return rejectInternal(changeId, workspace, path, hunkIds, batchMode = false)
+    }
 
+    private fun rejectInternal(
+        changeId: String? = null,
+        workspace: String? = null,
+        path: String? = null,
+        hunkIds: List<String>? = null,
+        batchMode: Boolean = false
+    ): DecideResult? {
         val cs = resolveTargetChangeSet(changeId, workspace, path) ?: return null
         val normWs = cs.workspace
 
@@ -442,15 +480,21 @@ class ChangeStore {
             if (anyAccepted) {
                 val cp = getOrCreateCheckpoint(normWs)
                 cp.files[cs.path] = putBaselineBlob(normWs, targetDiskContent)
-                persistCheckpoint(normWs)
+                if (!batchMode) {
+                    persistCheckpoint(normWs)
+                }
             }
-            pruneUnusedBlobs(normWs)
+            if (!batchMode) {
+                pruneUnusedBlobs(normWs)
+            }
         } else {
             wsMap?.put(cs.id, updatedCs)
         }
 
-        persistStaging(normWs)
-        notifyChange(normWs, cs.path)
+        if (!batchMode) {
+            persistStaging(normWs)
+            notifyChange(normWs, cs.path)
+        }
 
         val remaining = updatedHunks.count { it.decision == "pending" }
         return DecideResult(
@@ -823,7 +867,7 @@ class ChangeStore {
     private fun sha256(input: String): String {
         val md = MessageDigest.getInstance("SHA-256")
         val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
+        return HexFormat.of().formatHex(bytes)
     }
 }
 

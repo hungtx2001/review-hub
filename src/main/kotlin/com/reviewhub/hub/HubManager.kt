@@ -45,8 +45,15 @@ class HubManager(private val project: Project) : Disposable {
     var client: HubClient? = null
         private set
 
+    @Volatile
     var changes: List<ChangeSummary> = emptyList()
         private set
+
+    @Volatile
+    private var pendingByNormPath: Map<String, ChangeSummary> = emptyMap()
+
+    val hasPendingChanges: Boolean
+        get() = pendingByNormPath.isNotEmpty()
 
     private var lastHubJsonTime: Long = 0L
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -139,6 +146,10 @@ class HubManager(private val project: Project) : Disposable {
                         return
                     }
 
+                    if (isLocalStore) {
+                        return
+                    }
+
                     // Check if hub.json has been updated or server restarted
                     val hubFile = getHubJsonFile()
                     val currentMtime = hubFile?.lastModified() ?: 0L
@@ -197,10 +208,13 @@ class HubManager(private val project: Project) : Disposable {
                 c.listChanges(workspace)
             }
             if (newChanges != changes) {
-                val previousPendingPaths = changes.filter { it.status != "resolved" }.map { it.path }.toSet()
+                val previousPendingPaths = pendingByNormPath.keys
                 changes = newChanges
-                val currentPending = changes.filter { it.status != "resolved" }
-                val newlyAddedPending = currentPending.filter { it.path !in previousPendingPaths }
+                val currentPending = newChanges.filter { it.status != "resolved" }
+                pendingByNormPath = currentPending.associateBy { PathUtil.normalizePathKey(it.path) }
+                val newlyAddedPending = currentPending.filter {
+                    PathUtil.normalizePathKey(it.path) !in previousPendingPaths
+                }
 
                 notifyListeners()
                 ApplicationManager.getApplication().invokeLater {
@@ -318,9 +332,9 @@ class HubManager(private val project: Project) : Disposable {
     }
 
     fun findChange(relPath: String): ChangeSummary? {
-        return changes.find {
-            PathUtil.pathsMatch(it.path, relPath) && it.status != "resolved"
-        }
+        val map = pendingByNormPath
+        if (map.isEmpty()) return null
+        return map[PathUtil.normalizePathKey(relPath)]
     }
 
     fun isPending(path: String): Boolean {

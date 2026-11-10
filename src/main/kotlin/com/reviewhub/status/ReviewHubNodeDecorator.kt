@@ -19,13 +19,11 @@ class ReviewHubNodeDecorator : ProjectViewNodeDecorator {
 
     override fun decorate(node: ProjectViewNode<*>, data: PresentationData) {
         val project = node.project ?: return
+        val hubManager = project.getService(HubManager::class.java)
+        if (!hubManager.hasPendingChanges) return
         val virtualFile = node.virtualFile ?: return
         val relPath = PathUtil.toRelativePath(project, virtualFile) ?: return
-
-        val hubManager = project.getService(HubManager::class.java)
-        val change = hubManager.changes.find {
-            PathUtil.pathsMatch(it.path, relPath) && it.status != "resolved"
-        } ?: return
+        val change = hubManager.findChange(relPath) ?: return
 
         if (change.pending > 0) {
             val stats = if (change.added > 0 || change.removed > 0) {

@@ -34,6 +34,15 @@ class ReviewHubStatusBarWidgetFactory : StatusBarWidgetFactory {
 class ReviewHubStatusBarWidget(private val project: Project) : CustomStatusBarWidget {
     private var myStatusBar: StatusBar? = null
     private val label = JLabel()
+    private val hubManager = project.getService(HubManager::class.java)
+    private val changeListener: () -> Unit = {
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
+                updateStatus()
+                myStatusBar?.updateWidget(ID())
+            }
+        }
+    }
 
     init {
         label.border = JBUI.Borders.empty(0, 4)
@@ -57,19 +66,10 @@ class ReviewHubStatusBarWidget(private val project: Project) : CustomStatusBarWi
             }
         }.installOn(label)
 
-        val hubManager = project.getService(HubManager::class.java)
-        hubManager.addChangeListener {
-            ApplicationManager.getApplication().invokeLater {
-                if (!project.isDisposed) {
-                    updateStatus()
-                    myStatusBar?.updateWidget(ID())
-                }
-            }
-        }
+        hubManager.addChangeListener(changeListener)
     }
 
     private fun updateStatus() {
-        val hubManager = project.getService(HubManager::class.java)
         val changes = hubManager.changes
         if (changes.isEmpty()) {
             label.text = "Review Hub: Ready"
@@ -88,6 +88,7 @@ class ReviewHubStatusBarWidget(private val project: Project) : CustomStatusBarWi
         myStatusBar = statusBar
     }
     override fun dispose() {
+        hubManager.removeChangeListener(changeListener)
         myStatusBar = null
     }
     override fun getComponent(): JComponent = label
