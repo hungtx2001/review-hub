@@ -5,19 +5,19 @@
 
     <description><![CDATA[
         <h2>Review Hub for JetBrains IDEs</h2>
-        <p><b>The safe review bridge for autonomous AI coding agents.</b> Always see what AI agents proposed, navigate changes, and accept or reject individual hunks before anything touches your disk.</p>
+        <p><b>The safe review bridge for autonomous AI coding agents.</b> Original baselines are snapshotted safely in a content-addressed store (CAS) while AI edits are live-synced to disk for builds and tests — letting you inspect, navigate, and accept or reject individual hunks at any time.</p>
         <p>Works natively with Claude Code, OpenAI Codex, Antigravity, OpenCode, Aider, Cursor, Windsurf, Cline, and Roo via native embedded MCP server (SSE).</p>
 
         <h3>Key Features</h3>
         <ul>
             <li><b>Native Embedded MCP Server:</b> Runs locally on port 49182 (SSE) as soon as you open the IDE. No Node.js runtime or npm install needed!</li>
-            <li><b>In-Memory Staging:</b> AI edits are staged safely in memory before touching your files on disk.</li>
-            <li><b>In-Editor Inline Review:</b> Visual color highlights, gutter markers, and single-click <code>✓Accept | ✕Reject</code> inlay annotations.</li>
-            <li><b>Compact Floating Header Bar:</b> Quick Accept/Reject and Next/Prev hunk navigation directly on top of active editor tabs.</li>
-            <li><b>Checkpoint Snapshot &amp; One-Click Rollback:</b> Automatic pre-AI snapshots let you revert entire sessions back to baseline with peace of mind.</li>
+            <li><b>Shadow Baseline + Live Disk Sync:</b> AI edits sync to disk immediately so compilers and test runners test the new code, while baselines remain safely stored for instant hunk/file rejection.</li>
+            <li><b>Block-Inlay Inline Review:</b> Deleted lines render inside non-intrusive Block Inlays with single-click <code>✓Accept | ✕Reject</code> pills, keeping your editor document 100% valid and line-number accurate.</li>
+            <li><b>Unified Editor Header Bar:</b> Quick Accept/Reject file, Next/Prev hunk, and multi-file navigation directly on top of active editor tabs.</li>
+            <li><b>Checkpoint Snapshot &amp; One-Click Rollback:</b> Sub-millisecond copy-on-write snapshots let you or your AI agent revert entire sessions back to baseline.</li>
             <li><b>Sub-Millisecond Myers Diff:</b> High-performance diffing with automatic CRLF vs LF and indentation normalization.</li>
-            <li><b>MCP Agent Feedback Loop:</b> Exposes <code>get_review_status</code> so autonomous AI agents know whether proposals were approved.</li>
-            <li><b>Status Bar &amp; Project Tree Badges:</b> Always see pending files and hunk counts at a glance.</li>
+            <li><b>MCP Agent Feedback Loop:</b> Exposes <code>get_review_status</code> and <code>rollback_checkpoint</code> so autonomous AI agents can verify review decisions and self-recover from broken builds.</li>
+            <li><b>Status Bar &amp; Project Tree Badges:</b> Always see pending files, <code>[NEW]</code> / <code>[DELETED]</code> states, and hunk counts at a glance.</li>
         </ul>
     ]]></description>
 

@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class ReviewHubServer(
@@ -28,6 +29,7 @@ class ReviewHubServer(
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; isLenient = true }
     private val compactJson = Json { prettyPrint = false; ignoreUnknownKeys = true; isLenient = true }
     private var server: HttpServer? = null
+    private var executor: ExecutorService? = null
     var port: Int = preferredPort
         private set
     var token: String = UUID.randomUUID().toString()
@@ -59,7 +61,9 @@ class ReviewHubServer(
 
         server = createdServer
         port = boundPort
-        server?.executor = Executors.newCachedThreadPool()
+        val exec = Executors.newCachedThreadPool()
+        executor = exec
+        server?.executor = exec
 
         registerRoutes(createdServer)
         createdServer.start()
@@ -75,6 +79,8 @@ class ReviewHubServer(
         sseSessions.clear()
         server?.stop(0)
         server = null
+        executor?.shutdownNow()
+        executor = null
         removeHubJson()
     }
 
