@@ -1,5 +1,6 @@
 package com.reviewhub.actions
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ide.CopyPasteManager
@@ -8,6 +9,7 @@ import com.reviewhub.mcp.AiToolConfigManager
 import java.awt.datatransfer.StringSelection
 
 class CopyAgentRulesAction : AnAction("Copy AI Agent Rules") {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
     override fun actionPerformed(e: AnActionEvent) {
         CopyPasteManager.getInstance().setContents(StringSelection(AiToolConfigManager.AGENT_RULES_CONTENT))
         Messages.showInfoMessage(
