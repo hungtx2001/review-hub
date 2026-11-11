@@ -1,6 +1,7 @@
 package com.reviewhub.toolwindow
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
@@ -40,7 +41,7 @@ import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.border.EmptyBorder
 
-class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true, true) {
+class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
     companion object {
         private val GREEN_ATTR = SimpleTextAttributes(
             SimpleTextAttributes.STYLE_BOLD,
@@ -352,12 +353,20 @@ class ReviewHubPanel(private val project: Project) : SimpleToolWindowPanel(true,
         menu.show(changeList, e.x, e.y)
     }
 
-    private fun setupListeners() {
-        hubManager.addChangeListener {
-            ApplicationManager.getApplication().invokeLater {
+    private val changeListener: () -> Unit = {
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
                 refreshList()
             }
         }
+    }
+
+    private fun setupListeners() {
+        hubManager.addChangeListener(changeListener)
+    }
+
+    override fun dispose() {
+        hubManager.removeChangeListener(changeListener)
     }
 
     fun refreshList() {

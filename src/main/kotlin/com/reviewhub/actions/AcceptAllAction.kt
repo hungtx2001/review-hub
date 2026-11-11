@@ -12,33 +12,20 @@ class AcceptAllAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: return
-        val workspace = project.basePath ?: return
 
-        if (hubManager.changes.isEmpty()) {
+        if (!hubManager.hasPendingChanges) {
             Messages.showInfoMessage(project, "No pending changes to accept.", "Review Hub")
             return
         }
 
         val confirm = Messages.showYesNoDialog(
             project,
-            "Are you sure you want to accept all pending changes and write them to disk?",
+            "Are you sure you want to accept all pending changes in this workspace?",
             "Accept All Changes",
             Messages.getQuestionIcon()
         )
         if (confirm != Messages.YES) return
 
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val pendingFiles = hubManager.changes
-            for (change in pendingFiles) {
-                hubManager.acceptChange(changeId = change.id, workspace = workspace)
-            }
-            hubManager.refresh()
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
-                VirtualFileManager.getInstance().asyncRefresh(null)
-            }
-        }
+        hubManager.acceptAll()
     }
 }

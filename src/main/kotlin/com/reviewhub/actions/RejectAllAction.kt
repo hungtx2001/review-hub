@@ -12,33 +12,20 @@ class RejectAllAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val hubManager = project.getService(HubManager::class.java)
-        val client = hubManager.client ?: return
-        val workspace = project.basePath ?: return
 
-        if (hubManager.changes.isEmpty()) {
+        if (!hubManager.hasPendingChanges) {
             Messages.showInfoMessage(project, "No pending changes to reject.", "Review Hub")
             return
         }
 
         val confirm = Messages.showYesNoDialog(
             project,
-            "Are you sure you want to reject all pending changes and restore baseline?",
+            "Are you sure you want to reject all pending changes and restore baseline on disk?",
             "Reject All Changes",
             Messages.getWarningIcon()
         )
         if (confirm != Messages.YES) return
 
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val pendingFiles = hubManager.changes
-            for (change in pendingFiles) {
-                hubManager.rejectChange(changeId = change.id, workspace = workspace)
-            }
-            hubManager.refresh()
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                ReviewHubInlineReview.reloadAllOpenReviewEditors(project)
-                VirtualFileManager.getInstance().asyncRefresh(null)
-            }
-        }
+        hubManager.rejectAll()
     }
 }
