@@ -15,6 +15,9 @@ object PathUtil {
         if (!normFile.startsWith(normBase, ignoreCase = true)) {
             return null
         }
+        if (normFile.length > normBase.length && normFile[normBase.length] != '/') {
+            return null
+        }
         return normFile.substring(normBase.length).trimStart('/')
     }
 

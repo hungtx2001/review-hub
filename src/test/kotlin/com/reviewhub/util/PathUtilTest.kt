@@ -18,6 +18,9 @@ class PathUtilTest {
         assertNull(
             PathUtil.toRelativePath("D:/Project/hub-preview", "D:/Project/other-repo/file.txt")
         )
+        assertNull(
+            PathUtil.toRelativePath("D:/Project/hub-preview", "D:/Project/hub-preview-v2/file.txt")
+        )
     }
 }
 
