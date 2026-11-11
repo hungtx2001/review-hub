@@ -832,6 +832,7 @@ class ChangeStore {
                     val cp = json.decodeFromString<CheckpointRecord>(cpFile.readText(Charsets.UTF_8))
                     val normWs = normalizeWorkspace(cp.workspace)
                     checkpoints[normWs] = cp.copy(workspace = normWs)
+                    loadedWorkspaces.add(normWs)
                 } catch (_: Exception) {}
             }
 
@@ -843,6 +844,7 @@ class ChangeStore {
                         val normWs = normalizeWorkspace(cs.workspace)
                         val wsMap = changesByWorkspace.computeIfAbsent(normWs) { ConcurrentHashMap() }
                         wsMap[cs.id] = cs
+                        loadedWorkspaces.add(normWs)
                     }
                 } catch (_: Exception) {}
             }
