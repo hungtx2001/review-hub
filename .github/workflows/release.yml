@@ -28,6 +28,8 @@ jobs:
   build-and-release:
     name: Build & Release JetBrains Plugin
     runs-on: ubuntu-latest
+    env:
+      JETBRAINS_TOKEN: ${{ secrets.JETBRAINS_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -73,6 +75,35 @@ jobs:
           name: review-hub-plugin
           path: build/distributions/*.zip
 
+      # =========================================================================
+      # Version Check: Kiểm tra phiên bản plugin so với Git tag / Marketplace
+      # =========================================================================
+      - name: Check JetBrains Plugin Version for Publishing
+        id: check_versions
+        shell: bash
+        run: |
+          echo "======================================================="
+          echo "Checking JetBrains plugin version..."
+          echo "======================================================="
+
+          LOCAL_JB_VER="${{ steps.meta.outputs.version }}"
+          
+          # Kiểm tra nếu git tag cho version này đã tồn tại trước khi tạo release
+          if git rev-parse "v$LOCAL_JB_VER" >/dev/null 2>&1 && [ "${{ github.ref_type }}" != "tag" ]; then
+            TAG_EXISTS="true"
+          else
+            TAG_EXISTS="false"
+          fi
+
+          echo "JetBrains: local=$LOCAL_JB_VER | tag_exists=$TAG_EXISTS"
+          if [ "$TAG_EXISTS" = "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "publish_jetbrains=false" >> $GITHUB_OUTPUT
+            echo "-> [SKIP] Version v$LOCAL_JB_VER already exists in git tags."
+          else
+            echo "publish_jetbrains=true" >> $GITHUB_OUTPUT
+            echo "-> [YES] Will attempt to publish version $LOCAL_JB_VER."
+          fi
+
       - name: Create or Update GitHub Release
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -88,48 +119,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # =========================================================================
-      # Version Check: Kiểm tra phiên bản plugin so với Git tag / Marketplace
-      # =========================================================================
-      - name: Check JetBrains Plugin Version for Publishing
-        id: check_versions
-        shell: bash
-        run: |
-          echo "======================================================="
-          echo "Checking JetBrains plugin version..."
-          echo "======================================================="
-
-          LOCAL_JB_VER=$(grep "pluginVersion" gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
-          
-          # Kiểm tra nếu git tag cho version này đã tồn tại
-          if git rev-parse "v$LOCAL_JB_VER" >/dev/null 2>&1; then
-            TAG_EXISTS="true"
-          else
-            TAG_EXISTS="false"
-          fi
-
-          echo "JetBrains: local=$LOCAL_JB_VER | tag_exists=$TAG_EXISTS"
-          if [ "$TAG_EXISTS" = "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            echo "publish_jetbrains=false" >> $GITHUB_OUTPUT
-            echo "-> [SKIP] Version v$LOCAL_JB_VER already exists in git tags."
-          else
-            echo "publish_jetbrains=true" >> $GITHUB_OUTPUT
-            echo "-> [YES] Will attempt to publish version $LOCAL_JB_VER."
-          fi
-
       # -------------------------------------------------------------------------
       # Publish Plugin lên JetBrains Marketplace (Bỏ qua lỗi trùng phiên bản)
       # -------------------------------------------------------------------------
       - name: Publish Plugin to JetBrains Marketplace
-        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main') && steps.check_versions.outputs.publish_jetbrains == 'true' && env.JETBRAINS_TOKEN != ''
+        if: (github.ref_type == 'tag' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && steps.check_versions.outputs.publish_jetbrains == 'true' && env.JETBRAINS_TOKEN != ''
         continue-on-error: true
         id: publish_jb
         run: |
           ./gradlew publishPlugin
-        env:
-          JETBRAINS_TOKEN: ${{ secrets.JETBRAINS_TOKEN }}
 
       - name: Handle Publish Result
         if: steps.publish_jb.outcome == 'failure'
         run: |
-          echo "::warning::publishPlugin did not succeed (version $LOCAL_JB_VER may already exist on JetBrains Marketplace channel). Workflow continues without failing."
+          echo "::warning::publishPlugin did not succeed (version ${{ steps.meta.outputs.version }} may already exist on JetBrains Marketplace channel). Workflow continues without failing."
