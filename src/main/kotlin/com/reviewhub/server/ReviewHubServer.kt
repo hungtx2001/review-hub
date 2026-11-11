@@ -281,12 +281,19 @@ class ReviewHubServer(
         val body = readRequestBody(exchange)
         if (body.isEmpty()) {
             exchange.sendResponseHeaders(400, -1)
+            exchange.close()
             return
         }
 
-        val requestElement = json.parseToJsonElement(body)
+        val requestElement = try {
+            json.parseToJsonElement(body)
+        } catch (e: Exception) {
+            sendJson(exchange, 400, buildJsonObject { put("error", "Invalid JSON: ${e.message}") })
+            return
+        }
         if (requestElement !is JsonObject) {
             exchange.sendResponseHeaders(400, -1)
+            exchange.close()
             return
         }
 
@@ -302,7 +309,18 @@ class ReviewHubServer(
             return
         }
 
-        val responseJson = processMcpMethod(id, method, params)
+        val responseJson = try {
+            processMcpMethod(id, method, params)
+        } catch (e: Throwable) {
+            buildJsonObject {
+                put("jsonrpc", "2.0")
+                if (id != null) put("id", id)
+                putJsonObject("error") {
+                    put("code", -32603)
+                    put("message", e.message ?: "Internal error")
+                }
+            }
+        }
 
         if (sessionId != null) {
             val sseExchange = sseSessions[sessionId]
@@ -514,10 +532,10 @@ class ReviewHubServer(
 
                 if (replaced == null) {
                     val fileExists = File(targetWs, targetPath).exists() || store.findChangeByPath(targetWs, targetPath) != null
-                    val errMsg = if (!fileExists) {
-                        "File does not exist: $targetPath (use propose_write to create a new file)"
-                    } else {
-                        "Target old_string not found in file: $targetPath (${currentText.lines().size} lines)"
+                    val errMsg = when {
+                        !fileExists -> "File does not exist: $targetPath (use propose_write to create a new file)"
+                        oldString.isEmpty() -> "old_string cannot be empty when editing a non-empty file: $targetPath (use propose_write to overwrite the entire file)"
+                        else -> "Target old_string not found in file: $targetPath (${currentText.lines().size} lines)"
                     }
                     return compactJson.encodeToString(buildJsonObject {
                         put("status", "error")

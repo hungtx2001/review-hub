@@ -54,5 +54,11 @@ class FuzzyMatchUtilTest {
         assertNotNull(replaced)
         assertEquals("fun a() {\n    println(\"hello\")\n}\nfun b() {\n    println(\"hello\")\n}", replaced)
     }
+
+    @Test
+    fun `empty oldString only matches when text is empty to prevent overwriting existing files`() {
+        assertNull(FuzzyMatchUtil.findAndReplace("existing content", "", "new content"))
+        assertEquals("new content", FuzzyMatchUtil.findAndReplace("", "", "new content"))
+    }
 }
 

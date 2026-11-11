@@ -150,12 +150,14 @@ class HubManager(private val project: Project) : Disposable {
                         return
                     }
 
-                    // Check if hub.json has been updated or server restarted
+                    // Check if hub.json has been updated, deleted, or primary server stopped
                     val hubFile = getHubJsonFile()
                     val currentMtime = hubFile?.lastModified() ?: 0L
                     val hubUpdated = hubFile != null && currentMtime > lastHubJsonTime
+                    val serverDown = client == null || hubFile == null || !client!!.healthCheck()
 
-                    if (client == null || hubUpdated) {
+                    if (serverDown || hubUpdated) {
+                        client = null
                         connect()
                     } else {
                         refresh()

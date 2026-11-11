@@ -15,7 +15,7 @@ object FuzzyMatchUtil {
         replaceAll: Boolean = false
     ): String? {
         if (oldString.isEmpty()) {
-            return newString
+            return if (text.isEmpty()) newString else null
         }
 
         // 1. Exact match

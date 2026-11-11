@@ -43,7 +43,7 @@ class ConfigureMcpDialog(private val project: Project?) : DialogWrapper(project,
         titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 13f)
         headerPanel.add(titleLabel, BorderLayout.NORTH)
 
-        val descLabel = JBLabel("Review Hub stages AI changes in memory and lets you inspect and accept hunk-by-hunk before saving.")
+        val descLabel = JBLabel("Review Hub snapshots baselines safely and live-syncs AI edits to disk for builds while you review hunk-by-hunk.")
         descLabel.foreground = JBColor.GRAY
         headerPanel.add(descLabel, BorderLayout.SOUTH)
 
