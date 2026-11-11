@@ -102,7 +102,7 @@ class ReviewHubHeaderBar(
             ""
         }
 
-        val statusBadge = JBLabel("${fileBadge}$hunkCount pending  •  Alt+A Accept  Alt+R Reject").apply {
+        val statusBadge = JBLabel("${fileBadge}$hunkCount pending  •  Alt+A Accept Hunk  Alt+R Reject Hunk").apply {
             font = font.deriveFont(11f)
             foreground = ReviewHubInlineReview.SEPARATOR_COLOR
         }
