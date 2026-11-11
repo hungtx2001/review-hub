@@ -216,6 +216,7 @@ object ReviewHubInlineReview {
                 if (changeSet == null || changeSet.status == "resolved" || !changeSet.proposedExists) {
                     if (changeSet != null && !changeSet.proposedExists && !ioFile.exists() && vf != null) {
                         FileEditorManager.getInstance(project).closeFile(vf)
+                        clear(project, editor, vf)
                     } else {
                         clear(project, editor, vf)
                     }
@@ -251,6 +252,7 @@ object ReviewHubInlineReview {
                 if (!changeSet.proposedExists) {
                     if (!ioFile.exists() && vf != null) {
                         FileEditorManager.getInstance(project).closeFile(vf)
+                        clear(project, editor, vf)
                     } else {
                         clear(project, editor, vf)
                     }
