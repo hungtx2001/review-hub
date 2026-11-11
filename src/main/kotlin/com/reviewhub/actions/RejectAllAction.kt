@@ -11,6 +11,13 @@ import com.reviewhub.inline.ReviewHubInlineReview
 
 class RejectAllAction : AnAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val project = e.project
+        val hubManager = project?.getService(HubManager::class.java)
+        e.presentation.isEnabled = hubManager != null && hubManager.hasPendingChanges
+    }
+
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val hubManager = project.getService(HubManager::class.java)
